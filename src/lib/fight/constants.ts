@@ -74,6 +74,7 @@ export const ATTACKS: Record<AttackId, AttackDef> = {
     hitstun: 22,
     blockstun: 11,
     pushback: 8,
+    launchVy: 4.5, // heavy kick pops the defender off the ground
     meterGain: 9,
     isLow: true,
   },
@@ -89,6 +90,7 @@ export const ATTACKS: Record<AttackId, AttackDef> = {
     hitstun: 30,
     blockstun: 14,
     pushback: 14,
+    launchVy: 8.5, // the super sends them flying
     meterGain: 0,
     isLow: false,
   },

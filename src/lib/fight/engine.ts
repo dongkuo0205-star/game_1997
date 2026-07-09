@@ -64,7 +64,8 @@ function tickFighter(f: Fighter, input: FightInput, opponentX: number): Fighter 
 
   if (next.stunFrames > 0) {
     next.stunFrames -= 1;
-    next.vx *= 0.85;
+    // ground friction bleeds knockback fast; airborne bodies keep flying
+    next.vx *= grounded ? 0.85 : 0.98;
     if (Math.abs(next.vx) < 0.1) next.vx = 0;
     if (next.stunFrames <= 0 && next.action !== "ko") {
       next.action = grounded ? "idle" : "jump";
@@ -81,7 +82,9 @@ function tickFighter(f: Fighter, input: FightInput, opponentX: number): Fighter 
       next.hasHitThisAttack = false;
     }
   } else if (next.action === "ko") {
-    next.vx = 0;
+    // a KO'd fighter is a ragdoll: flies until landing, then slides to a stop
+    next.vx *= next.y > 0 ? 0.99 : 0.8;
+    if (Math.abs(next.vx) < 0.1) next.vx = 0;
   } else {
     // idle / walk / crouch / jump: read input.
     const wantsSuper = input.super && next.meter >= SUPER_METER_COST && grounded;
@@ -110,22 +113,38 @@ function tickFighter(f: Fighter, input: FightInput, opponentX: number): Fighter 
   return next;
 }
 
-function applyPhysics(f: Fighter): Fighter {
+function applyPhysics(f: Fighter, events: FightEvent[]): Fighter {
   const next = { ...f };
   if (next.y > 0 || next.vy !== 0) {
     next.vy += GRAVITY;
     next.y += next.vy;
     if (next.y <= 0) {
+      const impactVy = next.vy;
       next.y = 0;
       next.vy = 0;
       if (next.action === "jump") {
         next.action = "idle";
         next.actionFrame = 0;
       }
+      // a body slamming down (launched or KO'd) kicks up a shockwave
+      if (impactVy < -4 && (next.action === "hitstun" || next.action === "ko")) {
+        events.push({ type: "land", defender: next.id, impactVy });
+      }
     }
   }
   next.x += next.vx;
-  next.x = Math.max(STAGE_MARGIN, Math.min(STAGE_WIDTH - STAGE_MARGIN, next.x));
+  const clampedX = Math.max(STAGE_MARGIN, Math.min(STAGE_WIDTH - STAGE_MARGIN, next.x));
+  // corner bounce: a knocked-back body rebounds off the wall instead of sticking
+  if (
+    clampedX !== next.x &&
+    (next.action === "hitstun" || next.action === "ko") &&
+    Math.abs(next.vx) > 1.5
+  ) {
+    next.vx *= -0.45;
+    if (next.y > 0) next.vy = Math.max(next.vy, 2.5); // pop up off the wall, keeps juggles alive
+    events.push({ type: "wallbounce", defender: next.id });
+  }
+  next.x = clampedX;
   return next;
 }
 
@@ -168,7 +187,7 @@ function resolveAttack(
   const reach = def.reachX;
   const dx = (defender.x - attacker.x) * attacker.facing; // positive = defender in front
   const dy = Math.abs(defender.y - attacker.y);
-  const inRange = dx > -6 && dx < reach && dy < 26;
+  const inRange = dx > -6 && dx < reach && dy < 34; // tall enough to juggle launched bodies
   if (!inRange) {
     return { attacker, defender, event: null };
   }
@@ -196,12 +215,17 @@ function resolveAttack(
     nextAttacker.comboCount = attacker.framesSinceLastLand <= COMBO_WINDOW_FRAMES ? attacker.comboCount + 1 : 1;
     nextAttacker.framesSinceLastLand = 0;
     const hp = Math.max(0, defender.hp - def.damage);
+    const ko = hp <= 0;
+    // launchers pop the defender airborne; the KO blow always sends them flying
+    const launchVy = ko ? Math.max(def.launchVy ?? 0, 7) : def.launchVy ?? 0;
     nextDefender = {
       ...defender,
       hp,
-      action: hp <= 0 ? "ko" : "hitstun",
-      stunFrames: def.hitstun,
-      vx: attacker.facing * def.pushback,
+      action: ko ? "ko" : "hitstun",
+      stunFrames: ko ? def.hitstun : Math.max(def.hitstun, launchVy > 0 ? 40 : 0),
+      vx: attacker.facing * (ko ? Math.max(def.pushback, 5.5) : def.pushback),
+      vy: launchVy > 0 ? launchVy : defender.vy,
+      y: launchVy > 0 && defender.y <= 0 ? 0.01 : defender.y, // lift off the ground plane
     };
     event = {
       type: hp <= 0 ? "ko" : "hit",
@@ -226,12 +250,12 @@ export function stepFight(
   let player = tickFighter(world.player, playerInput, world.opponent.x);
   let opponent = tickFighter(world.opponent, opponentInput, world.player.x);
 
-  player = applyPhysics(player);
-  opponent = applyPhysics(opponent);
+  const events: FightEvent[] = [];
+
+  player = applyPhysics(player, events);
+  opponent = applyPhysics(opponent, events);
 
   [player, opponent] = resolveSpacing(player, opponent);
-
-  const events: FightEvent[] = [];
 
   const r1 = resolveAttack(player, opponent, opponentInput);
   player = r1.attacker;

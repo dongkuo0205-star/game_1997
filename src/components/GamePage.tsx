@@ -267,7 +267,12 @@ export default function GamePage() {
       <div className="min-h-screen bg-arcade-bg pb-8">
         <ArcadeHeader day={gameState.stats.day} money={gameState.stats.money} />
         <main className="mx-auto max-w-3xl px-4 py-4">
-          <FightCanvas key={gameState.currentOpponent.id} opponent={gameState.currentOpponent} onEnd={handleFightEnd} />
+          <FightCanvas
+            key={gameState.currentOpponent.id}
+            opponent={gameState.currentOpponent}
+            onEnd={handleFightEnd}
+            winStreak={gameState.stats.win_streak}
+          />
         </main>
       </div>
     );

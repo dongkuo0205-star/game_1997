@@ -115,3 +115,30 @@ export function coin(): void {
   tone("square", 988, 988, 0.08, 0.9);
   tone("square", 1319, 1319, 0.35, 0.9, 0.08);
 }
+
+/** Retro arcade "voice" — a formant-ish sawtooth bark, pitched per fighter. */
+export function shout(kind: "light" | "heavy" | "super" | "win", opponentVoice = false): void {
+  const ac = ctx();
+  if (!ac) return;
+  const pitch = opponentVoice ? 0.82 : 1; // opponent sounds a touch deeper
+  if (kind === "light") {
+    tone("sawtooth", 340 * pitch, 180 * pitch, 0.09, 0.5);
+  } else if (kind === "heavy") {
+    tone("sawtooth", 300 * pitch, 120 * pitch, 0.16, 0.7);
+    noiseBurst(0.06, 0.3, 900);
+  } else if (kind === "super") {
+    tone("sawtooth", 260 * pitch, 420 * pitch, 0.12, 0.8);
+    tone("sawtooth", 420 * pitch, 110 * pitch, 0.28, 0.8, 0.1);
+    noiseBurst(0.12, 0.4, 800);
+  } else {
+    // win: a cocky two-note rise
+    tone("sawtooth", 240 * pitch, 300 * pitch, 0.14, 0.6);
+    tone("sawtooth", 300 * pitch, 380 * pitch, 0.22, 0.6, 0.16);
+  }
+}
+
+/** Heavy body hitting the pavement. */
+export function thud(): void {
+  noiseBurst(0.18, 1.1, 500);
+  tone("sine", 110, 45, 0.16, 1);
+}

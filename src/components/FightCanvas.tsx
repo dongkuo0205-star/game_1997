@@ -47,9 +47,11 @@ interface AnimTracker {
 export default function FightCanvas({
   opponent,
   onEnd,
+  winStreak = 0,
 }: {
   opponent: Opponent;
   onEnd: (result: FightMatchResult) => void;
+  winStreak?: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const onEndRef = useRef(onEnd);
@@ -138,11 +140,53 @@ export default function FightCanvas({
     const ghostHp = { player: MAX_HP, opponent: MAX_HP };
     const ghostDelay = { player: 0, opponent: 0 };
 
-    // Slow motion: the world steps at 1/3 speed while active. Used for the
-    // final super hit and the KO fall.
+    // Slow motion: the world steps at 1/slowmoDiv speed while active. Supers
+    // run at 1/3; the KO fall runs at 1/5 (≈0.2x) for the cinematic.
     let slowmoFrames = 0;
-    // KO is savored: the loser falls in slow motion before the banner drops.
+    let slowmoDiv = 3;
+    // KO is savored: the loser falls in slow motion before the banner drops,
+    // with the camera rushing in on them.
     let koPendingFrames = -1;
+    let koFocusId: "player" | "opponent" | null = null;
+
+    // Super freeze frame: the darkest moment of the cinematic, during hitstop.
+    let superFreeze = 0;
+
+    // Ground shockwaves from bodies slamming down.
+    interface Shockwave {
+      x: number;
+      life: number;
+      maxLife: number;
+      big: boolean;
+    }
+    let shockwaves: Shockwave[] = [];
+
+    // Fighter voice callouts ("하압!", "먹어라!!") floating above the attacker.
+    interface Callout {
+      text: string;
+      x: number;
+      y: number;
+      life: number;
+      maxLife: number;
+      color: string;
+    }
+    let callouts: Callout[] = [];
+    const GRUNTS = ["하!", "흐압!", "타아!", "얍!"];
+    const SUPER_LINES = ["먹어라!!", "끝이다!!", "이걸로 끝!"];
+    const WIN_LINES = ["실력이 부족하군.", "아직 멀었어.", "좋은 승부였다."];
+    let gruntIdx = 0;
+
+    function fighterShout(f: Fighter, text: string, color: string) {
+      callouts.push({
+        text,
+        x: f.x * SCALE,
+        y: GROUND_SCREEN_Y - f.y * SCALE - FIGURE_HEIGHT - 14,
+        life: 0,
+        maxLife: 40,
+        color,
+      });
+      if (callouts.length > 3) callouts = callouts.slice(-3);
+    }
 
     // Crowd excitement — they bounce harder and shout when something big lands.
     let crowdHype = 0;
@@ -157,16 +201,20 @@ export default function FightCanvas({
     const CROWD_LINES_BIG = ["필살기다!!", "미쳤다 진짜!", "저걸 맞네;;", "역대급이다"];
     let crowdLineIdx = 0;
 
-    function crowdShout(big: boolean) {
-      const pool = big ? CROWD_LINES_BIG : CROWD_LINES;
+    function crowdShoutText(text: string) {
       crowdLineIdx += 1;
       bubbles.push({
-        text: pool[(crowdLineIdx * 7 + (big ? 3 : 0)) % pool.length],
+        text,
         x: 60 + ((crowdLineIdx * 173) % (CANVAS_W - 160)),
         life: 0,
         maxLife: 80,
       });
       if (bubbles.length > 3) bubbles = bubbles.slice(-3);
+    }
+
+    function crowdShout(big: boolean) {
+      const pool = big ? CROWD_LINES_BIG : CROWD_LINES;
+      crowdShoutText(pool[(crowdLineIdx * 7 + (big ? 3 : 0)) % pool.length]);
     }
 
     interface Particle {
@@ -688,10 +736,15 @@ export default function FightCanvas({
       ctx.fillRect(0, stripTop, CANVAS_W, 46);
 
       // Backlit crowd (two loose rows) — they bounce harder when hyped, and
-      // a few of them jump outright on big moments.
+      // a few of them jump outright on big moments. A win streak literally
+      // draws a crowd: newcomers fill in from the edges toward the center.
       const crowdY = GROUND_SCREEN_Y - 26;
       const hype = crowdHype > 0 ? Math.min(1, crowdHype / 60) : 0;
-      for (let i = 0; i < 30; i++) {
+      const crowdCount = Math.min(30, 12 + winStreak * 2);
+      for (let n = 0; n < crowdCount; n++) {
+        // interleave outward from the center so a small crowd clusters mid-screen
+        const i = 15 + Math.ceil(n / 2) * (n % 2 === 0 ? 1 : -1);
+        if (i < 0 || i > 29) continue;
         const cx = (i / 29) * (CANVAS_W - 16) + 8;
         const back = i % 2 === 0;
         const bob = Math.sin(animTimer * (0.06 + hype * 0.14) + i * 1.7) * (2 + hype * 3);
@@ -776,6 +829,42 @@ export default function FightCanvas({
       ctx.globalAlpha = 1;
     }
 
+    function drawShockwaves() {
+      for (const sw of shockwaves) {
+        const t = sw.life / sw.maxLife;
+        const rx = (sw.big ? 70 : 44) * (0.3 + t * 0.9);
+        const ry = rx * 0.22;
+        ctx.globalAlpha = (1 - t) * 0.8;
+        ctx.strokeStyle = "#ffdcb0";
+        ctx.lineWidth = sw.big ? 3 : 2;
+        ctx.beginPath();
+        ctx.ellipse(sw.x, GROUND_SCREEN_Y + 4, rx, ry, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = (1 - t) * 0.3;
+        ctx.beginPath();
+        ctx.ellipse(sw.x, GROUND_SCREEN_Y + 4, rx * 0.7, ry * 0.7, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    function drawCallouts() {
+      for (const c of callouts) {
+        const t = c.life / c.maxLife;
+        ctx.globalAlpha = t < 0.1 ? t / 0.1 : 1 - Math.max(0, (t - 0.6) / 0.4);
+        ctx.font = "bold 15px sans-serif";
+        ctx.textAlign = "center";
+        ctx.strokeStyle = "rgba(20,8,10,0.9)";
+        ctx.lineWidth = 3;
+        const y = c.y - t * 10;
+        ctx.strokeText(c.text, c.x, y);
+        ctx.fillStyle = c.color;
+        ctx.fillText(c.text, c.x, y);
+      }
+      ctx.globalAlpha = 1;
+      ctx.textAlign = "left";
+    }
+
     /** A fighter whose super is currently in startup/active frames, if any. */
     function superInFlight(): Fighter | null {
       const def = ATTACKS.super;
@@ -797,16 +886,19 @@ export default function FightCanvas({
         );
       }
 
-      // camera: ease toward the midpoint of the fighters, zooming with proximity
+      // camera: ease toward the midpoint of the fighters, zooming with proximity.
+      // On KO it rushes in hard on the loser instead.
       const pX = world.player.x * SCALE;
       const oX = world.opponent.x * SCALE;
       const proximity = Math.max(0, Math.min(1, 1 - Math.abs(pX - oX) / (CANVAS_W * 0.65)));
-      const koBoost = koZoomFrames > 0 ? (koZoomFrames / 45) * 0.2 : 0;
-      const targetZ = Math.min(1.35, 1.02 + proximity * 0.14 + koBoost);
-      camZ += (targetZ - camZ) * 0.08;
+      const koCinema = koFocusId !== null && koPendingFrames >= 0;
+      const koBoost = koCinema ? 0.35 : koZoomFrames > 0 ? (koZoomFrames / 45) * 0.2 : 0;
+      const targetZ = Math.min(1.5, 1.02 + proximity * 0.14 + koBoost);
+      camZ += (targetZ - camZ) * (koCinema ? 0.22 : 0.08);
       const halfW = CANVAS_W / (2 * camZ);
-      const targetX = Math.max(halfW, Math.min(CANVAS_W - halfW, (pX + oX) / 2));
-      camX += (targetX - camX) * 0.1;
+      const focusX = koCinema && koFocusId ? world[koFocusId].x * SCALE : (pX + oX) / 2;
+      const targetX = Math.max(halfW, Math.min(CANVAS_W - halfW, focusX));
+      camX += (targetX - camX) * (koCinema ? 0.2 : 0.1);
       camX = Math.max(halfW, Math.min(CANVAS_W - halfW, camX));
       const camY = CANVAS_H - CANVAS_H / (2 * camZ); // hug the ground so the road stays in frame
       ctx.translate(CANVAS_W / 2, CANVAS_H / 2);
@@ -815,10 +907,12 @@ export default function FightCanvas({
 
       drawBackground();
 
-      // super cinematic: dim the street, spotlight whoever is unleashing it
+      // super cinematic: dim the street, spotlight whoever is unleashing it.
+      // During the freeze frame (hit connects, world stops) it goes darkest —
+      // only the fighters and the explosion read.
       const superFighter = superInFlight();
       if (superFighter) {
-        ctx.fillStyle = "rgba(8,4,22,0.6)";
+        ctx.fillStyle = superFreeze > 0 ? "rgba(4,2,14,0.82)" : "rgba(8,4,22,0.6)";
         ctx.fillRect(-80, -80, CANVAS_W + 160, CANVAS_H + 160);
         const sx = superFighter.x * SCALE;
         const sy = GROUND_SCREEN_Y - superFighter.y * SCALE - FIGURE_HEIGHT * 0.5;
@@ -836,11 +930,13 @@ export default function FightCanvas({
         ctx.ellipse(f.x * SCALE, GROUND_SCREEN_Y + 6, 34, 8, 0, 0, Math.PI * 2);
         ctx.fill();
       }
+      drawShockwaves();
       drawTrails();
       drawFighter(world.opponent, true);
       drawFighter(world.player, false);
       drawFlashes();
       drawParticles();
+      drawCallouts();
       ctx.restore();
 
       // full-screen impact flash, drawn in screen space under the HUD
@@ -865,8 +961,12 @@ export default function FightCanvas({
       trails = [];
       flashes = [];
       bubbles = [];
+      shockwaves = [];
+      callouts = [];
       slowmoFrames = 0;
+      slowmoDiv = 3;
       koPendingFrames = -1;
+      koFocusId = null;
       timeLeftFrames = ROUND_TIME_SECONDS * 60;
       phase = "intro";
       phaseTimer = 90;
@@ -882,9 +982,18 @@ export default function FightCanvas({
       if (screenFlash > 0) screenFlash -= 1;
       if (koZoomFrames > 0) koZoomFrames -= 1;
       if (crowdHype > 0) crowdHype -= 1;
+      if (superFreeze > 0) superFreeze -= 1;
       bubbles = bubbles.filter((b) => {
         b.life += 1;
         return b.life < b.maxLife;
+      });
+      shockwaves = shockwaves.filter((sw) => {
+        sw.life += 1;
+        return sw.life < sw.maxLife;
+      });
+      callouts = callouts.filter((c) => {
+        c.life += 1;
+        return c.life < c.maxLife;
       });
       // ghost HP holds for a beat, then drains toward the real value
       for (const side of ["player", "opponent"] as const) {
@@ -893,7 +1002,23 @@ export default function FightCanvas({
       }
 
       if (phase === "intro") {
-        if (phaseTimer === 90) sfx.roundStart();
+        if (phaseTimer === 90) {
+          sfx.roundStart();
+          // a streak precedes you — the regulars talk before round 1
+          if (roundNumber === 1) {
+            if (winStreak >= 10) {
+              crowdShoutText("고수다...");
+              crowdShoutText("누구야?");
+              crowdHype = 100;
+            } else if (winStreak >= 5) {
+              crowdShoutText("또 이겼어.");
+              crowdHype = 70;
+            } else if (winStreak >= 3) {
+              crowdShoutText("쟤 잘한다.");
+              crowdHype = 50;
+            }
+          }
+        }
         phaseTimer -= 1;
         if (phaseTimer === 30 && !fightCalled) {
           fightCalled = true;
@@ -913,8 +1038,13 @@ export default function FightCanvas({
       if (phase === "matchEnd") {
         if (!resultSounded) {
           resultSounded = true;
-          if (playerRounds > opponentRounds) sfx.win();
+          const playerWon = playerRounds > opponentRounds;
+          if (playerWon) sfx.win();
           else sfx.lose();
+          const winner = playerWon ? world.player : world.opponent;
+          gruntIdx += 1;
+          fighterShout(winner, WIN_LINES[gruntIdx % WIN_LINES.length], "#ffe9c9");
+          sfx.shout("win", !playerWon);
         }
         matchEndTimer -= 1;
         if (matchEndTimer <= 0 && !ended) {
@@ -934,16 +1064,35 @@ export default function FightCanvas({
         return; // world frozen for impact weight; particles/shake still animate
       }
 
-      // slow motion after the freeze: world steps at 1/3 speed
+      // slow motion after the freeze: world steps at 1/slowmoDiv speed
       if (slowmoFrames > 0) {
         slowmoFrames -= 1;
-        if (animTimer % 3 !== 0) return;
+        if (animTimer % slowmoDiv !== 0) return;
       }
 
       timeLeftFrames = Math.max(0, timeLeftFrames - 1);
       const playerInput = inputFromKeys();
       const opponentInput = tickAi(aiBrain, world.frame, world.opponent, world.player, opponent);
       const result = stepFight(world, playerInput, opponentInput);
+
+      // fighter voice: bark on the first frame of every attack
+      for (const f of [result.world.player, result.world.opponent]) {
+        if (f.action === "attack" && f.actionFrame === 1 && f.attackId) {
+          const isOpp = f.id === "opponent";
+          if (f.attackId === "super") {
+            gruntIdx += 1;
+            fighterShout(f, SUPER_LINES[gruntIdx % SUPER_LINES.length], "#ffe14d");
+            sfx.shout("super", isOpp);
+          } else if (f.attackId === "hp" || f.attackId === "hk") {
+            gruntIdx += 1;
+            fighterShout(f, GRUNTS[gruntIdx % GRUNTS.length], isOpp ? "#9fe8ff" : "#ffd0c0");
+            sfx.shout("heavy", isOpp);
+          } else if (gruntIdx++ % 3 === 0) {
+            sfx.shout("light", isOpp);
+          }
+        }
+      }
+
       world = result.world;
 
       for (const ev of result.events) {
@@ -973,7 +1122,9 @@ export default function FightCanvas({
           ghostDelay[ev.defender] = 30;
           if (isSuper) {
             screenFlash = 9;
-            slowmoFrames = 14; // the final blow of a super lands in slow motion
+            superFreeze = 12; // freeze frame: pitch-black stage, fighters + blast only
+            slowmoFrames = 14; // then the blow lands in slow motion
+            slowmoDiv = 3;
             koZoomFrames = Math.max(koZoomFrames, 24);
             crowdHype = Math.max(crowdHype, 90);
             crowdShout(true);
@@ -1011,9 +1162,30 @@ export default function FightCanvas({
           shakeMag = 9;
           screenFlash = SCREEN_FLASH_MAX;
           koZoomFrames = 45;
+          koFocusId = ev.defender; // camera rushes in on the loser
           crowdHype = 120;
           crowdShout(true);
           spawnImpactFlash(point.x, point.y, 100, "#ffffff", true);
+        }
+
+        // bodies hitting the pavement / bouncing off the corner
+        if (ev.type === "land") {
+          const lx = (ev.defender === "player" ? world.player.x : world.opponent.x) * SCALE;
+          const big = (ev.impactVy ?? 0) < -7;
+          shockwaves.push({ x: lx, life: 0, maxLife: big ? 22 : 16, big });
+          spawnSparks(lx, GROUND_SCREEN_Y - 6, ["#c9a68a", "#8a7362", "#e8d9c4"], big ? 14 : 8, big ? 4 : 2.5);
+          shakeFrames = Math.max(shakeFrames, big ? 10 : 5);
+          shakeMag = Math.max(shakeMag, big ? 6 : 3);
+          sfx.thud();
+        } else if (ev.type === "wallbounce") {
+          const wf = ev.defender === "player" ? world.player : world.opponent;
+          const wx = wf.x * SCALE;
+          const wy = GROUND_SCREEN_Y - wf.y * SCALE - FIGURE_HEIGHT * 0.5;
+          spawnImpactFlash(wx, wy, 30, "#cfd8ff", false);
+          spawnSparks(wx, wy, ["#cfd8ff", "#8fa0c0"], 8, 3);
+          shakeFrames = Math.max(shakeFrames, 6);
+          shakeMag = Math.max(shakeMag, 4);
+          sfx.block();
         }
       }
 
@@ -1031,16 +1203,19 @@ export default function FightCanvas({
       const opponentDown = world.opponent.action === "ko";
       const timeUp = timeLeftFrames <= 0;
       if (playerDown || opponentDown || timeUp) {
-        // On a knockout the loser falls in slow motion before the banner drops.
+        // On a knockout the loser flies and falls at 0.2x speed while the
+        // camera rushes in, before the banner drops.
         if ((playerDown || opponentDown) && koPendingFrames === -1 && !timeUp) {
-          koPendingFrames = 40;
-          slowmoFrames = Math.max(slowmoFrames, 40);
+          koPendingFrames = 12; // counted in world steps: 12 × 5 ≈ 1s of real time
+          slowmoFrames = 70;
+          slowmoDiv = 5;
         }
         if (koPendingFrames > 0) {
           koPendingFrames -= 1;
           return;
         }
         koPendingFrames = -1;
+        slowmoFrames = 0;
         const playerWonRound = playerDown ? false : opponentDown ? true : world.player.hp >= world.opponent.hp;
         if (playerWonRound) playerRounds += 1;
         else {
@@ -1090,7 +1265,7 @@ export default function FightCanvas({
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [opponent]);
+  }, [opponent, winStreak]);
 
   const press = (field: keyof FightInput, down: boolean) => {
     touchInputRef.current[field] = down;

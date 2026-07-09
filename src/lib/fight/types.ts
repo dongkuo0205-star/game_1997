@@ -53,6 +53,7 @@ export interface AttackDef {
   hitstun: number; // frames the defender is stunned on clean hit
   blockstun: number; // frames the defender is stunned on block
   pushback: number; // horizontal knockback applied to defender on clean hit
+  launchVy?: number; // upward velocity applied on clean hit (launcher attacks)
   meterGain: number;
   isLow: boolean; // must be blocked crouching
 }
@@ -76,12 +77,13 @@ export interface Fighter {
 }
 
 export interface FightEvent {
-  type: "hit" | "block" | "ko";
-  attacker: FighterId;
+  type: "hit" | "block" | "ko" | "land" | "wallbounce";
+  attacker?: FighterId; // absent for physics events (land/wallbounce)
   defender: FighterId;
   attackId?: AttackId;
   comboCount?: number;
   defenderWasAirborne?: boolean;
+  impactVy?: number; // downward speed at the moment of landing (land events)
 }
 
 export interface FightWorld {
