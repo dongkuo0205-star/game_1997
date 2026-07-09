@@ -1428,6 +1428,46 @@ export default function FightCanvas({
       ctx.globalAlpha = 1;
     }
 
+    // Re-drawn crisp ABOVE the depth blur: the signage a player's eye should
+    // land on. Marquee titles stay legible, and the 오락실 sign burns through
+    // with an additive neon bloom.
+    function drawSharpAccents() {
+      ctx.save();
+      ctx.translate(layerShift(0.45), 0);
+      ctx.textAlign = "center";
+      ctx.font = "bold 11px sans-serif";
+      for (const c of CABINETS) {
+        const top = 168 + c.dy;
+        ctx.fillStyle = c.marquee;
+        ctx.fillRect(c.x + 6, top + 4, c.w - 12, 16);
+        ctx.fillStyle = "#1a0d18";
+        ctx.fillText(c.name, c.x + c.w / 2, top + 16);
+      }
+      ctx.restore();
+
+      ctx.save();
+      ctx.translate(layerShift(0.2), 0);
+      const neonOn = Math.floor(animTimer / 30) % 11 !== 7;
+      ctx.textAlign = "center";
+      ctx.globalCompositeOperation = "lighter";
+      ctx.font = "bold 30px sans-serif";
+      ctx.shadowColor = "#ff5c8a";
+      // bloom: a wide soft pass, then a hot tight core
+      ctx.shadowBlur = neonOn ? 26 : 6;
+      ctx.fillStyle = neonOn ? "rgba(255,110,150,0.75)" : "rgba(255,92,138,0.15)";
+      ctx.fillText("오락실", CANVAS_W / 2, 106);
+      ctx.shadowBlur = neonOn ? 12 : 3;
+      ctx.fillStyle = neonOn ? "#ffd2e0" : "rgba(255,92,138,0.25)";
+      ctx.fillText("오락실", CANVAS_W / 2, 106);
+      ctx.font = "bold 13px monospace";
+      ctx.shadowColor = "#59d8ff";
+      ctx.shadowBlur = neonOn ? 14 : 3;
+      ctx.fillStyle = neonOn ? "#a8ecff" : "rgba(89,216,255,0.25)";
+      ctx.fillText("SINCE 1997", CANVAS_W / 2, 126);
+      ctx.restore();
+      ctx.textAlign = "left";
+    }
+
     // Foreground parallax: dark corners of the neighboring cabinets frame the
     // shot and move faster than the world — instant depth.
     function drawForeground() {
@@ -1512,13 +1552,14 @@ export default function FightCanvas({
       ctx.translate(-camX, -camY);
 
       // depth of field: the background renders offscreen, then the wall half
-      // is stamped back softly blurred and washed 18% darker so the fighters
-      // pop; the floor they stand on stays sharp.
+      // is stamped back with a light blur — focus does the separating, not
+      // darkness. Only a whisper of a dark wash (6%) remains, so the room
+      // stays readable. The floor they stand on stays sharp.
       const mainCtx = ctx;
       ctx = bgCtx;
       drawBackground();
       ctx = mainCtx;
-      ctx.filter = "blur(1.5px)";
+      ctx.filter = "blur(1.1px)";
       ctx.drawImage(bgCanvas, 0, 0, CANVAS_W, GROUND_SCREEN_Y, 0, 0, CANVAS_W, GROUND_SCREEN_Y);
       ctx.filter = "none";
       ctx.drawImage(
@@ -1532,13 +1573,9 @@ export default function FightCanvas({
         CANVAS_W,
         CANVAS_H - GROUND_SCREEN_Y
       );
-      ctx.fillStyle = "rgba(0,0,0,0.18)";
+      ctx.fillStyle = "rgba(0,0,0,0.06)";
       ctx.fillRect(0, 0, CANVAS_W, GROUND_SCREEN_Y);
-      const wash = ctx.createLinearGradient(0, GROUND_SCREEN_Y, 0, GROUND_SCREEN_Y + 30);
-      wash.addColorStop(0, "rgba(0,0,0,0.18)");
-      wash.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.fillStyle = wash;
-      ctx.fillRect(0, GROUND_SCREEN_Y, CANVAS_W, 30);
+      drawSharpAccents();
 
       // super cinematic: dim the street, spotlight whoever is unleashing it.
       // During the freeze frame (hit connects, world stops) it goes darkest —
