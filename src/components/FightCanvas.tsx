@@ -10,6 +10,7 @@ import { ATTACKS } from "@/lib/fight/constants";
 import { MAX_HP, ROUNDS_TO_WIN, ROUND_TIME_SECONDS, STAGE_WIDTH } from "@/lib/fight/constants";
 import * as sfx from "@/lib/fight/sfx";
 import { startBgm, stopBgm } from "@/lib/fight/bgm";
+import { startAmbience, stopAmbience } from "@/lib/fight/ambience";
 
 export interface FightMatchResult {
   won: boolean;
@@ -77,6 +78,7 @@ export default function FightCanvas({
       if (KEY_MAP[e.code]) e.preventDefault();
       sfx.unlock();
       startBgm(); // no-op if already playing; needs a user gesture to start
+      startAmbience();
       keys.add(e.code);
     };
     const onKeyUp = (e: KeyboardEvent) => keys.delete(e.code);
@@ -132,7 +134,40 @@ export default function FightCanvas({
     const SCREEN_FLASH_MAX = 12;
 
     // HP bars keep a slowly-draining "ghost" so big damage reads as a chunk.
+    // The ghost holds still for a beat before sliding down (Street Fighter 6 style).
     const ghostHp = { player: MAX_HP, opponent: MAX_HP };
+    const ghostDelay = { player: 0, opponent: 0 };
+
+    // Slow motion: the world steps at 1/3 speed while active. Used for the
+    // final super hit and the KO fall.
+    let slowmoFrames = 0;
+    // KO is savored: the loser falls in slow motion before the banner drops.
+    let koPendingFrames = -1;
+
+    // Crowd excitement — they bounce harder and shout when something big lands.
+    let crowdHype = 0;
+    interface SpeechBubble {
+      text: string;
+      x: number;
+      life: number;
+      maxLife: number;
+    }
+    let bubbles: SpeechBubble[] = [];
+    const CROWD_LINES = ["우와 대박!", "한 판 더!", "쟤 좀 치는데?", "오늘 물 올랐네", "동전 아깝지 않다"];
+    const CROWD_LINES_BIG = ["필살기다!!", "미쳤다 진짜!", "저걸 맞네;;", "역대급이다"];
+    let crowdLineIdx = 0;
+
+    function crowdShout(big: boolean) {
+      const pool = big ? CROWD_LINES_BIG : CROWD_LINES;
+      crowdLineIdx += 1;
+      bubbles.push({
+        text: pool[(crowdLineIdx * 7 + (big ? 3 : 0)) % pool.length],
+        x: 60 + ((crowdLineIdx * 173) % (CANVAS_W - 160)),
+        life: 0,
+        maxLife: 80,
+      });
+      if (bubbles.length > 3) bubbles = bubbles.slice(-3);
+    }
 
     interface Particle {
       x: number;
@@ -362,7 +397,7 @@ export default function FightCanvas({
 
     function drawTrails() {
       for (const tr of trails) {
-        const fade = (1 - tr.life / 12) * 0.3;
+        const fade = (1 - tr.life / 12) * 0.45;
         drawSprite(tr.anim, tr.frame, tr.x, tr.y, tr.facing, 1, fade, "brightness(1.6) saturate(0.4)");
       }
     }
@@ -488,9 +523,9 @@ export default function FightCanvas({
       ctx.fillText("YOU", 16 + 140, 60);
       ctx.fillText(opponent.name, CANVAS_W - 16 - 140, 60);
 
-      // combo counter
+      // combo counter — re-pops big on every added hit, then settles
       if (comboTimer > 0 && comboShown >= 2) {
-        const pop = comboTimer > 45 ? 1.35 : 1;
+        const pop = 1 + Math.max(0, comboTimer - 45) * 0.05;
         ctx.font = `bold ${Math.round(26 * pop)}px monospace`;
         ctx.fillStyle = "#ffb43a";
         ctx.strokeStyle = "#3a1500";
@@ -652,19 +687,42 @@ export default function FightCanvas({
       ctx.fillStyle = strip;
       ctx.fillRect(0, stripTop, CANVAS_W, 46);
 
-      // Backlit crowd (two loose rows)
+      // Backlit crowd (two loose rows) — they bounce harder when hyped, and
+      // a few of them jump outright on big moments.
       const crowdY = GROUND_SCREEN_Y - 26;
+      const hype = crowdHype > 0 ? Math.min(1, crowdHype / 60) : 0;
       for (let i = 0; i < 30; i++) {
         const cx = (i / 29) * (CANVAS_W - 16) + 8;
         const back = i % 2 === 0;
-        const bob = Math.sin(animTimer * 0.06 + i * 1.7) * 2;
-        const yOff = back ? -7 : 2;
+        const bob = Math.sin(animTimer * (0.06 + hype * 0.14) + i * 1.7) * (2 + hype * 3);
+        const jump = hype > 0 && i % 3 === 0 ? Math.max(0, Math.sin(animTimer * 0.25 + i * 2.1)) * 8 * hype : 0;
+        const yOff = (back ? -7 : 2) - jump;
         ctx.fillStyle = back ? "#241018" : "#170a10";
         ctx.fillRect(cx - 7, crowdY + 7 + bob + yOff, 14, 20);
         ctx.beginPath();
         ctx.arc(cx, crowdY + bob + yOff, 7, 0, Math.PI * 2);
         ctx.fill();
       }
+
+      // crowd chatter bubbles float up over the heads
+      for (const b of bubbles) {
+        const t = b.life / b.maxLife;
+        const bx = b.x;
+        const by = crowdY - 26 - t * 14;
+        ctx.globalAlpha = t < 0.15 ? t / 0.15 : 1 - Math.max(0, (t - 0.7) / 0.3);
+        ctx.font = "bold 11px sans-serif";
+        const tw = ctx.measureText(b.text).width;
+        ctx.fillStyle = "rgba(16,8,20,0.85)";
+        ctx.strokeStyle = "rgba(255,255,255,0.55)";
+        ctx.lineWidth = 1;
+        ctx.fillRect(bx - tw / 2 - 7, by - 12, tw + 14, 18);
+        ctx.strokeRect(bx - tw / 2 - 7, by - 12, tw + 14, 18);
+        ctx.fillStyle = "#ffe9c9";
+        ctx.textAlign = "center";
+        ctx.fillText(b.text, bx, by + 1);
+        ctx.globalAlpha = 1;
+      }
+      ctx.textAlign = "left";
 
       // Asphalt with sunset reflection
       const road = ctx.createLinearGradient(0, GROUND_SCREEN_Y, 0, CANVAS_H);
@@ -802,8 +860,13 @@ export default function FightCanvas({
       world = createWorld();
       ghostHp.player = MAX_HP;
       ghostHp.opponent = MAX_HP;
+      ghostDelay.player = 0;
+      ghostDelay.opponent = 0;
       trails = [];
       flashes = [];
+      bubbles = [];
+      slowmoFrames = 0;
+      koPendingFrames = -1;
       timeLeftFrames = ROUND_TIME_SECONDS * 60;
       phase = "intro";
       phaseTimer = 90;
@@ -818,9 +881,16 @@ export default function FightCanvas({
       if (shakeFrames > 0) shakeFrames -= 1;
       if (screenFlash > 0) screenFlash -= 1;
       if (koZoomFrames > 0) koZoomFrames -= 1;
-      // ghost HP drains toward the real value after a beat
-      ghostHp.player = Math.max(world.player.hp, ghostHp.player - 0.7);
-      ghostHp.opponent = Math.max(world.opponent.hp, ghostHp.opponent - 0.7);
+      if (crowdHype > 0) crowdHype -= 1;
+      bubbles = bubbles.filter((b) => {
+        b.life += 1;
+        return b.life < b.maxLife;
+      });
+      // ghost HP holds for a beat, then drains toward the real value
+      for (const side of ["player", "opponent"] as const) {
+        if (ghostDelay[side] > 0) ghostDelay[side] -= 1;
+        else ghostHp[side] = Math.max(world[side].hp, ghostHp[side] - 1.1);
+      }
 
       if (phase === "intro") {
         if (phaseTimer === 90) sfx.roundStart();
@@ -864,6 +934,12 @@ export default function FightCanvas({
         return; // world frozen for impact weight; particles/shake still animate
       }
 
+      // slow motion after the freeze: world steps at 1/3 speed
+      if (slowmoFrames > 0) {
+        slowmoFrames -= 1;
+        if (animTimer % 3 !== 0) return;
+      }
+
       timeLeftFrames = Math.max(0, timeLeftFrames - 1);
       const playerInput = inputFromKeys();
       const opponentInput = tickAi(aiBrain, world.frame, world.opponent, world.player, opponent);
@@ -894,8 +970,17 @@ export default function FightCanvas({
           hitstopFrames = isSuper ? 12 : heavy ? 7 : 4;
           shakeFrames = isSuper ? 18 : heavy ? 10 : 5;
           shakeMag = isSuper ? 11 : heavy ? 7 : 4;
-          if (isSuper) screenFlash = 9;
-          else if (heavy) screenFlash = 5;
+          ghostDelay[ev.defender] = 30;
+          if (isSuper) {
+            screenFlash = 9;
+            slowmoFrames = 14; // the final blow of a super lands in slow motion
+            koZoomFrames = Math.max(koZoomFrames, 24);
+            crowdHype = Math.max(crowdHype, 90);
+            crowdShout(true);
+          } else if (heavy) {
+            screenFlash = 5;
+            crowdHype = Math.max(crowdHype, 40);
+          }
           sfx.hit(heavy || isSuper);
           if (isSuper) sfx.ko();
           if (ev.attacker === "player") {
@@ -905,12 +990,17 @@ export default function FightCanvas({
             if (combo >= 2) {
               comboShown = combo;
               comboTimer = 55;
+              if (combo >= 4) {
+                crowdHype = Math.max(crowdHype, 70);
+                crowdShout(false);
+              }
             }
           }
         } else if (ev.type === "block") {
           spawnSparks(point.x, point.y, ["#7fd8ff", "#cfeeff"], 6, 2.5);
           spawnImpactFlash(point.x, point.y, 22, "#8fdcff", false);
           hitstopFrames = 2;
+          ghostDelay[ev.defender] = 30; // chip damage gets the same ghost treatment
           sfx.block();
         }
 
@@ -921,7 +1011,9 @@ export default function FightCanvas({
           shakeMag = 9;
           screenFlash = SCREEN_FLASH_MAX;
           koZoomFrames = 45;
-          spawnImpactFlash(point.x, point.y, 90, "#ffffff", true);
+          crowdHype = 120;
+          crowdShout(true);
+          spawnImpactFlash(point.x, point.y, 100, "#ffffff", true);
         }
       }
 
@@ -939,6 +1031,16 @@ export default function FightCanvas({
       const opponentDown = world.opponent.action === "ko";
       const timeUp = timeLeftFrames <= 0;
       if (playerDown || opponentDown || timeUp) {
+        // On a knockout the loser falls in slow motion before the banner drops.
+        if ((playerDown || opponentDown) && koPendingFrames === -1 && !timeUp) {
+          koPendingFrames = 40;
+          slowmoFrames = Math.max(slowmoFrames, 40);
+        }
+        if (koPendingFrames > 0) {
+          koPendingFrames -= 1;
+          return;
+        }
+        koPendingFrames = -1;
         const playerWonRound = playerDown ? false : opponentDown ? true : world.player.hp >= world.opponent.hp;
         if (playerWonRound) playerRounds += 1;
         else {
@@ -984,6 +1086,7 @@ export default function FightCanvas({
       cancelled = true;
       cancelAnimationFrame(rafId);
       stopBgm();
+      stopAmbience();
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
@@ -994,6 +1097,7 @@ export default function FightCanvas({
     if (down) {
       sfx.unlock();
       startBgm();
+      startAmbience();
     }
   };
 

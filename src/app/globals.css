@@ -7,8 +7,18 @@ body {
   color: #ece7e0;
 }
 
-/* 90s CRT feel: horizontal scanlines + soft vignette. Pointer-events off so
-   overlays never block clicks. */
+/* 90s CRT feel: horizontal scanlines + soft vignette + faint mains flicker,
+   like a game-center TV. Pointer-events off so overlays never block clicks. */
+@keyframes crt-flicker {
+  0%, 100% { opacity: 1; }
+  47% { opacity: 1; }
+  48% { opacity: 0.86; }
+  49% { opacity: 1; }
+  83% { opacity: 1; }
+  84% { opacity: 0.92; }
+  85% { opacity: 1; }
+}
+
 .crt::after {
   content: "";
   position: absolute;
@@ -21,6 +31,7 @@ body {
     rgba(0, 0, 0, 0.18) 3px
   );
   border-radius: inherit;
+  animation: crt-flicker 3.7s infinite;
 }
 
 .crt::before {
@@ -28,7 +39,10 @@ body {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 58%, rgba(0, 0, 0, 0.42) 100%);
+  /* warm phosphor cast in the center, vignette at the edges */
+  background:
+    radial-gradient(ellipse at center, rgba(255, 176, 104, 0.05) 0%, rgba(255, 176, 104, 0) 55%),
+    radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 58%, rgba(0, 0, 0, 0.42) 100%);
   border-radius: inherit;
   z-index: 1;
 }
