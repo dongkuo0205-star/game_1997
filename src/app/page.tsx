@@ -28,6 +28,29 @@ export default function HomePage() {
     router.push("/game");
   };
 
+  // Arcade convention: PRESS START itself starts the game — continue an
+  // existing run if one is saved, otherwise open character select.
+  const handlePressStart = () => {
+    if (hasSave()) {
+      handleContinue();
+    } else {
+      setSelecting(true);
+    }
+  };
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (selecting) return;
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        handlePressStart();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selecting]);
+
   return (
     <div className="crt flex min-h-screen flex-col items-center justify-center gap-8 bg-arcade-bg px-4 py-10 text-center">
       <div>
@@ -35,9 +58,13 @@ export default function HomePage() {
         <h1 className="neon-title font-arcade text-3xl text-arcade-neon sm:text-5xl">
           오락실 1997
         </h1>
-        <p className="blink-slow mt-5 font-arcade text-[11px] text-arcade-yellow">
+        <button
+          type="button"
+          onClick={handlePressStart}
+          className="blink-slow mt-5 cursor-pointer font-arcade text-[11px] text-arcade-yellow hover:text-arcade-neon"
+        >
           ▶ PRESS START ◀
-        </p>
+        </button>
         <p className="mt-4 max-w-md text-sm leading-relaxed text-gray-300">
           1997년, 서울. 학교 앞 작은 오락실.
           <br />
