@@ -629,144 +629,177 @@ export default function FightCanvas({
       ctx.textAlign = "left";
     }
 
-    // 1990s street at sunset — far skyline, near shops with signs, backlit crowd.
-    const FAR_SKYLINE = [
-      { x: 0, w: 90, h: 120 },
-      { x: 80, w: 60, h: 150 },
-      { x: 150, w: 100, h: 100 },
-      { x: 260, w: 70, h: 135 },
-      { x: 340, w: 110, h: 95 },
-      { x: 460, w: 80, h: 145 },
-      { x: 550, w: 100, h: 110 },
-      { x: 660, w: 110, h: 130 },
+    // 1997 arcade interior — a row of running cabinets along the back wall,
+    // a loose knot of silhouetted onlookers behind a steel rail, and the
+    // open floor where the money matches happen.
+    const CABINETS = [
+      { x: 8, w: 132, screen: "#59d8ff", marquee: "#ff5c8a", name: "격투 97" },
+      { x: 162, w: 132, screen: "#7dff8e", marquee: "#ffd54d", name: "슈팅" },
+      { x: 316, w: 132, screen: "#ff9de2", marquee: "#59d8ff", name: "레이싱" },
+      { x: 470, w: 132, screen: "#ffd27d", marquee: "#7dff8e", name: "퍼즐" },
+      { x: 624, w: 136, screen: "#9fa8ff", marquee: "#ff8a5c", name: "야구" },
     ];
-    const SHOPS = [
-      { x: -10, w: 150, h: 210, body: "#3a2233", sign: "만화방", signColor: "#ffd54d" },
-      { x: 150, w: 120, h: 180, body: "#402638", sign: "분식", signColor: "#7fe3a0" },
-      { x: 280, w: 150, h: 225, body: "#35203a", sign: "오락실", signColor: "#ff6e8e" },
-      { x: 440, w: 130, h: 190, body: "#402b36", sign: "전파사", signColor: "#6fd3e0" },
-      { x: 580, w: 200, h: 215, body: "#38222e", sign: "레코드", signColor: "#f2a35c" },
+    const POSTERS = [
+      { x: 58, y: 92, w: 34, h: 48, c: "#7a2f4a" },
+      { x: 224, y: 86, w: 30, h: 44, c: "#2f4a7a" },
+      { x: 668, y: 90, w: 32, h: 46, c: "#4a6a2f" },
     ];
+    // irregular standing spots, not a parade line; `back` row stands deeper
+    const CROWD_SPOTS = [
+      { x: 120, back: false },
+      { x: 208, back: true },
+      { x: 318, back: false },
+      { x: 262, back: true },
+      { x: 452, back: false },
+      { x: 560, back: true },
+      { x: 648, back: false },
+      { x: 96, back: true },
+      { x: 388, back: true },
+      { x: 508, back: false },
+      { x: 596, back: false },
+      { x: 170, back: false },
+    ];
+
+    /** Horizontal offset that makes a layer lag (factor < 1) or lead
+     *  (factor > 1) the camera — cheap parallax depth. */
+    function layerShift(factor: number): number {
+      return (camX - CANVAS_W / 2) * (1 - factor);
+    }
 
     function drawBackground() {
-      // Sunset sky
-      const sky = ctx.createLinearGradient(0, 0, 0, GROUND_SCREEN_Y);
-      sky.addColorStop(0, "#2b1a4d");
-      sky.addColorStop(0.4, "#75345f");
-      sky.addColorStop(0.75, "#c85a50");
-      sky.addColorStop(1, "#f0a05a");
-      ctx.fillStyle = sky;
+      // Room shell: warm dark wall
+      const wall = ctx.createLinearGradient(0, 0, 0, GROUND_SCREEN_Y);
+      wall.addColorStop(0, "#1c0f22");
+      wall.addColorStop(0.5, "#2a1731");
+      wall.addColorStop(1, "#3a2140");
+      ctx.fillStyle = wall;
       ctx.fillRect(0, 0, CANVAS_W, GROUND_SCREEN_Y);
 
-      // Setting sun with glow
-      const sunX = CANVAS_W * 0.62;
-      const sunY = GROUND_SCREEN_Y - 130;
-      const glow = ctx.createRadialGradient(sunX, sunY, 8, sunX, sunY, 120);
-      glow.addColorStop(0, "rgba(255,214,140,0.85)");
-      glow.addColorStop(1, "rgba(255,214,140,0)");
-      ctx.fillStyle = glow;
-      ctx.fillRect(sunX - 130, sunY - 130, 260, 260);
-      ctx.fillStyle = "#ffdf9e";
-      ctx.beginPath();
-      ctx.arc(sunX, sunY, 34, 0, Math.PI * 2);
-      ctx.fill();
+      // --- far wall (slowest layer): ceiling, posters, neon sign ---
+      ctx.save();
+      ctx.translate(layerShift(0.2), 0);
 
-      // Thin dusk clouds
-      ctx.fillStyle = "rgba(60,26,70,0.55)";
-      ctx.fillRect(0, 70, CANVAS_W, 8);
-      ctx.fillRect(120, 105, CANVAS_W - 200, 6);
-      ctx.fillRect(40, 140, CANVAS_W - 320, 5);
-
-      // Far skyline (haze-lit silhouettes)
-      ctx.fillStyle = "#4a2547";
-      for (const b of FAR_SKYLINE) {
-        ctx.fillRect(b.x, GROUND_SCREEN_Y - 60 - b.h, b.w, b.h + 60);
+      ctx.fillStyle = "#120a18";
+      ctx.fillRect(-80, 0, CANVAS_W + 160, 44);
+      for (const tx of [150, 480]) {
+        const flick = (animTimer + tx) % 240 > 6 ? 1 : 0.35; // tired fluorescent stutter
+        ctx.fillStyle = `rgba(220,235,255,${0.12 * flick})`;
+        ctx.fillRect(tx - 18, 30, 156, 26);
+        ctx.fillStyle = `rgba(235,245,255,${0.9 * flick})`;
+        ctx.fillRect(tx, 34, 120, 6);
       }
 
-      // Near shop row
-      for (const s of SHOPS) {
-        const top = GROUND_SCREEN_Y - 40 - s.h;
-        ctx.fillStyle = s.body;
-        ctx.fillRect(s.x, top, s.w, s.h);
-        // roofline
+      for (const p of POSTERS) {
+        ctx.fillStyle = p.c;
+        ctx.fillRect(p.x, p.y, p.w, p.h);
+        ctx.fillStyle = "rgba(255,255,255,0.25)";
+        ctx.fillRect(p.x + 4, p.y + 5, p.w - 8, 10);
+        ctx.strokeStyle = "rgba(0,0,0,0.5)";
+        ctx.strokeRect(p.x, p.y, p.w, p.h);
+      }
+
+      // neon sign blinks like tired 90s tubing
+      const neonOn = Math.floor(animTimer / 30) % 11 !== 7;
+      ctx.textAlign = "center";
+      ctx.font = "bold 30px sans-serif";
+      ctx.fillStyle = neonOn ? "#ff5c8a" : "rgba(255,92,138,0.25)";
+      ctx.shadowColor = "#ff5c8a";
+      ctx.shadowBlur = neonOn ? 18 : 4;
+      ctx.fillText("오락실", CANVAS_W / 2, 106);
+      ctx.font = "bold 13px monospace";
+      ctx.fillStyle = neonOn ? "#59d8ff" : "rgba(89,216,255,0.25)";
+      ctx.shadowColor = "#59d8ff";
+      ctx.shadowBlur = neonOn ? 10 : 3;
+      ctx.fillText("SINCE 1997", CANVAS_W / 2, 126);
+      ctx.shadowBlur = 0;
+      ctx.restore();
+
+      // --- cabinet row (mid layer): the other machines keep running ---
+      ctx.save();
+      ctx.translate(layerShift(0.45), 0);
+      for (let ci = 0; ci < CABINETS.length; ci++) {
+        const c = CABINETS[ci];
+        const top = 168;
+        const bottom = 324;
+        ctx.fillStyle = "#241222";
+        ctx.fillRect(c.x, top, c.w, bottom - top);
         ctx.fillStyle = "rgba(0,0,0,0.35)";
-        ctx.fillRect(s.x, top, s.w, 8);
-        // warm lit windows
-        ctx.fillStyle = "#ffca6e";
-        for (let wx = s.x + 12; wx < s.x + s.w - 14; wx += 22) {
-          for (let wy = top + 20; wy < GROUND_SCREEN_Y - 110; wy += 30) {
-            if ((wx * 5 + wy * 3) % 17 < 9) ctx.fillRect(wx, wy, 9, 12);
-          }
-        }
-        // vertical hangul signboard with soft glow
-        const signX = s.x + s.w - 26;
-        const signTop = top + 26;
-        const signH = s.sign.length * 24 + 14;
-        ctx.fillStyle = "rgba(12,6,16,0.85)";
-        ctx.fillRect(signX, signTop, 20, signH);
+        ctx.fillRect(c.x + c.w - 14, top, 14, bottom - top);
+        // marquee
+        ctx.fillStyle = c.marquee;
+        ctx.fillRect(c.x + 6, top + 4, c.w - 12, 16);
+        ctx.fillStyle = "#1a0d18";
+        ctx.font = "bold 11px sans-serif";
         ctx.textAlign = "center";
-        ctx.font = "bold 15px sans-serif";
-        ctx.fillStyle = s.signColor;
-        ctx.shadowColor = s.signColor;
-        ctx.shadowBlur = 8;
-        for (let i = 0; i < s.sign.length; i++) {
-          ctx.fillText(s.sign[i], signX + 10, signTop + 24 + i * 24);
-        }
-        ctx.shadowBlur = 0;
+        ctx.fillText(c.name, c.x + c.w / 2, top + 16);
+        // screen: alive — slow pulse, occasional attract-mode flash
+        const pulse = 0.72 + Math.sin(animTimer * 0.03 + ci * 2.1) * 0.18;
+        const attract = (animTimer + ci * 97) % 300 < 8;
+        ctx.globalAlpha = attract ? 0.95 : pulse;
+        ctx.fillStyle = attract ? "#ffffff" : c.screen;
+        ctx.fillRect(c.x + 14, top + 28, c.w - 28, 56);
+        ctx.globalAlpha = 0.08;
+        ctx.fillStyle = c.screen; // spill onto the wall
+        ctx.fillRect(c.x - 6, top + 16, c.w + 12, 84);
+        ctx.globalAlpha = 1;
+        // control deck + buttons
+        ctx.fillStyle = "#31182c";
+        ctx.fillRect(c.x + 4, top + 92, c.w - 8, 18);
+        ctx.fillStyle = "#ff5c5c";
+        ctx.fillRect(c.x + 24, top + 98, 5, 5);
+        ctx.fillStyle = "#ffd54d";
+        ctx.fillRect(c.x + 36, top + 98, 5, 5);
       }
+      ctx.restore();
 
-      // Telephone poles + sagging wires
-      ctx.strokeStyle = "#1d1016";
-      ctx.fillStyle = "#1d1016";
-      for (const px of [70, CANVAS_W - 90]) {
-        ctx.fillRect(px, GROUND_SCREEN_Y - 250, 7, 210);
-        ctx.fillRect(px - 18, GROUND_SCREEN_Y - 240, 43, 5);
-      }
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(73, GROUND_SCREEN_Y - 236);
-      ctx.quadraticCurveTo(CANVAS_W / 2, GROUND_SCREEN_Y - 190, CANVAS_W - 87, GROUND_SCREEN_Y - 236);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(73, GROUND_SCREEN_Y - 226);
-      ctx.quadraticCurveTo(CANVAS_W / 2, GROUND_SCREEN_Y - 176, CANVAS_W - 87, GROUND_SCREEN_Y - 226);
-      ctx.stroke();
-
-      // Lit storefront strip behind the crowd
-      const stripTop = GROUND_SCREEN_Y - 46;
-      const strip = ctx.createLinearGradient(0, stripTop, 0, GROUND_SCREEN_Y);
-      strip.addColorStop(0, "rgba(255,190,110,0.5)");
-      strip.addColorStop(1, "rgba(255,190,110,0.08)");
-      ctx.fillStyle = strip;
-      ctx.fillRect(0, stripTop, CANVAS_W, 46);
-
-      // Backlit crowd (two loose rows) — they bounce harder when hyped, and
-      // a few of them jump outright on big moments. A win streak literally
-      // draws a crowd: newcomers fill in from the edges toward the center.
-      const crowdY = GROUND_SCREEN_Y - 26;
+      // --- onlookers: a loose knot of pure-black silhouettes behind the rail.
+      // Head and shoulders only. They sway, raise arms on combos, lean back
+      // on supers and all jump on a KO. A win streak draws more of them in.
       const hype = crowdHype > 0 ? Math.min(1, crowdHype / 60) : 0;
-      const crowdCount = Math.min(30, 12 + winStreak * 2);
+      const superLean = superInFlight() !== null;
+      const koJumping = koZoomFrames > 0;
+      const crowdCount = Math.min(CROWD_SPOTS.length, 5 + Math.floor(winStreak * 0.7));
+      ctx.save();
+      ctx.translate(layerShift(0.7), 0);
       for (let n = 0; n < crowdCount; n++) {
-        // interleave outward from the center so a small crowd clusters mid-screen
-        const i = 15 + Math.ceil(n / 2) * (n % 2 === 0 ? 1 : -1);
-        if (i < 0 || i > 29) continue;
-        const cx = (i / 29) * (CANVAS_W - 16) + 8;
-        const back = i % 2 === 0;
-        const bob = Math.sin(animTimer * (0.06 + hype * 0.14) + i * 1.7) * (2 + hype * 3);
-        const jump = hype > 0 && i % 3 === 0 ? Math.max(0, Math.sin(animTimer * 0.25 + i * 2.1)) * 8 * hype : 0;
-        const yOff = (back ? -7 : 2) - jump;
-        ctx.fillStyle = back ? "#241018" : "#170a10";
-        ctx.fillRect(cx - 7, crowdY + 7 + bob + yOff, 14, 20);
+        const spot = CROWD_SPOTS[n];
+        const scale = spot.back ? 0.82 : 1;
+        const feetY = spot.back ? 328 : 338;
+        const sway = Math.sin(animTimer * 0.045 + n * 2.3) * (1.5 + hype * 2);
+        const jump = koJumping
+          ? Math.abs(Math.sin(animTimer * 0.22 + n * 1.4)) * 9
+          : hype > 0.5 && n % 3 === 0
+            ? Math.abs(Math.sin(animTimer * 0.2 + n)) * 5 * hype
+            : 0;
+        const lean = superLean ? -4 : 0;
+        const cx = spot.x + sway;
+        const cy = feetY - jump;
+        ctx.fillStyle = spot.back ? "#0d0710" : "#070309";
+        // shoulders
         ctx.beginPath();
-        ctx.arc(cx, crowdY + bob + yOff, 7, 0, Math.PI * 2);
+        ctx.moveTo(cx - 13 * scale, cy);
+        ctx.quadraticCurveTo(cx - 13 * scale, cy - 26 * scale, cx - 5 * scale, cy - 30 * scale);
+        ctx.lineTo(cx + 5 * scale, cy - 30 * scale);
+        ctx.quadraticCurveTo(cx + 13 * scale, cy - 26 * scale, cx + 13 * scale, cy);
+        ctx.closePath();
         ctx.fill();
+        // head
+        ctx.beginPath();
+        ctx.arc(cx + lean, cy - 37 * scale, 7.5 * scale, 0, Math.PI * 2);
+        ctx.fill();
+        // raised arms when the fight gets good
+        if (hype > 0.4 || koJumping) {
+          const wave = Math.sin(animTimer * 0.3 + n * 2) * 3;
+          ctx.fillRect(cx - 15 * scale, cy - 46 * scale + wave, 3.5, 16);
+          ctx.fillRect(cx + 11.5 * scale, cy - 46 * scale - wave, 3.5, 16);
+        }
       }
 
       // crowd chatter bubbles float up over the heads
       for (const b of bubbles) {
         const t = b.life / b.maxLife;
         const bx = b.x;
-        const by = crowdY - 26 - t * 14;
+        const by = 282 - t * 14;
         ctx.globalAlpha = t < 0.15 ? t / 0.15 : 1 - Math.max(0, (t - 0.7) / 0.3);
         ctx.font = "bold 11px sans-serif";
         const tw = ctx.measureText(b.text).width;
@@ -780,42 +813,57 @@ export default function FightCanvas({
         ctx.fillText(b.text, bx, by + 1);
         ctx.globalAlpha = 1;
       }
+      ctx.restore();
       ctx.textAlign = "left";
 
-      // Asphalt with sunset reflection
-      const road = ctx.createLinearGradient(0, GROUND_SCREEN_Y, 0, CANVAS_H);
-      road.addColorStop(0, "#5b3242");
-      road.addColorStop(0.35, "#3c2231");
-      road.addColorStop(1, "#241521");
-      ctx.fillStyle = road;
+      // --- guardrail between the crowd and the floor ---
+      ctx.save();
+      ctx.translate(layerShift(0.88), 0);
+      ctx.fillStyle = "#1b0f1e";
+      for (let px = 24; px < CANVAS_W + 60; px += 96) {
+        ctx.fillRect(px, 326, 5, 30);
+      }
+      for (const ry of [328, 342]) {
+        ctx.fillStyle = "#3d2a42";
+        ctx.fillRect(-40, ry, CANVAS_W + 80, 4);
+        ctx.fillStyle = "rgba(255,220,180,0.28)"; // dull steel highlight
+        ctx.fillRect(-40, ry, CANVAS_W + 80, 1.5);
+      }
+      ctx.restore();
+
+      // --- arcade floor: dark worn tile with a light pool where they fight ---
+      const floor = ctx.createLinearGradient(0, GROUND_SCREEN_Y, 0, CANVAS_H);
+      floor.addColorStop(0, "#241a2e");
+      floor.addColorStop(0.4, "#1c1424");
+      floor.addColorStop(1, "#120c18");
+      ctx.fillStyle = floor;
       ctx.fillRect(0, GROUND_SCREEN_Y, CANVAS_W, CANVAS_H - GROUND_SCREEN_Y);
 
-      // warm light pooling under the fighters
-      const pool = ctx.createRadialGradient(CANVAS_W / 2, GROUND_SCREEN_Y + 8, 20, CANVAS_W / 2, GROUND_SCREEN_Y + 8, 320);
-      pool.addColorStop(0, "rgba(255,170,90,0.28)");
-      pool.addColorStop(1, "rgba(255,170,90,0)");
+      const pool = ctx.createRadialGradient(CANVAS_W / 2, GROUND_SCREEN_Y + 10, 20, CANVAS_W / 2, GROUND_SCREEN_Y + 10, 330);
+      pool.addColorStop(0, "rgba(255,200,140,0.16)");
+      pool.addColorStop(1, "rgba(255,200,140,0)");
       ctx.fillStyle = pool;
       ctx.fillRect(0, GROUND_SCREEN_Y, CANVAS_W, CANVAS_H - GROUND_SCREEN_Y);
 
-      // pavement seams receding toward a vanishing point
-      ctx.strokeStyle = "rgba(255,220,180,0.10)";
+      // tile seams receding toward a vanishing point
+      ctx.strokeStyle = "rgba(200,180,220,0.08)";
       ctx.lineWidth = 1;
       const vpX = CANVAS_W / 2;
       for (let i = -5; i <= 5; i++) {
         ctx.beginPath();
-        ctx.moveTo(vpX + i * 40, GROUND_SCREEN_Y);
-        ctx.lineTo(vpX + i * 170, CANVAS_H);
+        ctx.moveTo(vpX + i * 46, GROUND_SCREEN_Y);
+        ctx.lineTo(vpX + i * 175, CANVAS_H);
         ctx.stroke();
       }
-      for (const ly of [GROUND_SCREEN_Y + 18, GROUND_SCREEN_Y + 44] ) {
+      for (const ly of [GROUND_SCREEN_Y + 16, GROUND_SCREEN_Y + 40]) {
         ctx.beginPath();
         ctx.moveTo(0, ly);
         ctx.lineTo(CANVAS_W, ly);
         ctx.stroke();
       }
 
-      // curb line
-      ctx.strokeStyle = "rgba(255,200,140,0.45)";
+      // floor edge under the rail
+      ctx.strokeStyle = "rgba(255,200,150,0.3)";
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(0, GROUND_SCREEN_Y);
@@ -851,6 +899,31 @@ export default function FightCanvas({
         ctx.stroke();
       }
       ctx.globalAlpha = 1;
+    }
+
+    // Foreground parallax: dark corners of the neighboring cabinets frame the
+    // shot and move faster than the world — instant depth.
+    function drawForeground() {
+      ctx.save();
+      ctx.translate(layerShift(1.3), 0);
+      ctx.globalAlpha = 0.92;
+      ctx.fillStyle = "#0b0510";
+      ctx.beginPath();
+      ctx.moveTo(-34, CANVAS_H + 20);
+      ctx.lineTo(-34, 150);
+      ctx.lineTo(44, 192);
+      ctx.lineTo(56, CANVAS_H + 20);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(CANVAS_W + 34, CANVAS_H + 20);
+      ctx.lineTo(CANVAS_W + 34, 168);
+      ctx.lineTo(CANVAS_W - 42, 206);
+      ctx.lineTo(CANVAS_W - 54, CANVAS_H + 20);
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.restore();
     }
 
     function drawCallouts() {
@@ -942,6 +1015,7 @@ export default function FightCanvas({
       drawFlashes();
       drawParticles();
       drawCallouts();
+      drawForeground();
       ctx.restore();
 
       // full-screen impact flash, drawn in screen space under the HUD
