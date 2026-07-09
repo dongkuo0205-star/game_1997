@@ -80,6 +80,12 @@ export default function FightCanvas({
     if (!bgCtx2d) return;
     const bgCtx: CanvasRenderingContext2D = bgCtx2d;
 
+    // Pixel HUD font — next/font registers Press Start 2P under a hashed
+    // family name, exposed via the --font-arcade CSS variable.
+    const arcadeFamily =
+      getComputedStyle(document.documentElement).getPropertyValue("--font-arcade").trim() || "'Press Start 2P'";
+    const hudFont = (px: number) => `${px}px ${arcadeFamily}, monospace`;
+
     let cancelled = false;
     let rafId = 0;
     let sheets: LoadedSheets | null = null;
@@ -543,7 +549,7 @@ export default function FightCanvas({
       ctx.lineWidth = 1;
       ctx.strokeRect(x, y, w, h);
       if (full) {
-        ctx.font = "bold 9px monospace";
+        ctx.font = hudFont(7);
         ctx.fillStyle = "#ffe14d";
         ctx.textAlign = alignRight ? "right" : "left";
         ctx.fillText("MAX! (SPACE)", alignRight ? x + w : x, y + 17);
@@ -578,9 +584,9 @@ export default function FightCanvas({
       ctx.strokeRect(CANVAS_W / 2 - 26, 10, 52, 30);
       ctx.textAlign = "center";
       ctx.fillStyle = timeLeftFrames < 10 * 60 ? "#ff5c5c" : "#fff";
-      ctx.font = "bold 20px monospace";
+      ctx.font = hudFont(15);
       ctx.fillText(String(Math.max(0, Math.ceil(timeLeftFrames / 60))), CANVAS_W / 2, 32);
-      ctx.font = "11px monospace";
+      ctx.font = hudFont(8);
       ctx.fillStyle = "#ffe9c9";
       ctx.fillText("YOU", 16 + 140, 60);
       ctx.fillText(opponent.name, CANVAS_W - 16 - 140, 60);
@@ -588,7 +594,7 @@ export default function FightCanvas({
       // combo counter — re-pops big on every added hit, then settles
       if (comboTimer > 0 && comboShown >= 2) {
         const pop = 1 + Math.max(0, comboTimer - 45) * 0.05;
-        ctx.font = `bold ${Math.round(26 * pop)}px monospace`;
+        ctx.font = hudFont(Math.round(19 * pop));
         ctx.fillStyle = "#ffb43a";
         ctx.strokeStyle = "#3a1500";
         ctx.lineWidth = 4;
@@ -598,18 +604,18 @@ export default function FightCanvas({
 
       if (phase === "intro") {
         if (phaseTimer > 30) {
-          ctx.font = "bold 34px monospace";
+          ctx.font = hudFont(24);
           ctx.fillStyle = "#ffe14d";
           ctx.strokeStyle = "#40200a";
           ctx.lineWidth = 5;
           ctx.strokeText(`ROUND ${roundNumber}`, CANVAS_W / 2, CANVAS_H / 2 - 40);
           ctx.fillText(`ROUND ${roundNumber}`, CANVAS_W / 2, CANVAS_H / 2 - 40);
-          ctx.font = "bold 16px monospace";
+          ctx.font = hudFont(11);
           ctx.fillStyle = "#fff";
           ctx.fillText(`나  VS  ${opponent.name}`, CANVAS_W / 2, CANVAS_H / 2);
         } else {
           const scale = 1 + (30 - phaseTimer) * 0.02;
-          ctx.font = `bold ${Math.round(40 * scale)}px monospace`;
+          ctx.font = hudFont(Math.round(28 * scale));
           ctx.fillStyle = "#ff6a3a";
           ctx.strokeStyle = "#40100a";
           ctx.lineWidth = 6;
@@ -620,7 +626,7 @@ export default function FightCanvas({
         // banner slams in oversized then settles
         const timer = phase === "matchEnd" ? matchEndTimer : phaseTimer;
         const punch = timer > 92 ? 1 + (timer - 92) * 0.14 : 1;
-        ctx.font = `bold ${Math.round(32 * punch)}px monospace`;
+        ctx.font = hudFont(Math.round(23 * punch));
         ctx.fillStyle = "#ffe14d";
         ctx.strokeStyle = "#40200a";
         ctx.lineWidth = 5;
@@ -1435,13 +1441,16 @@ export default function FightCanvas({
       ctx.save();
       ctx.translate(layerShift(0.45), 0);
       ctx.textAlign = "center";
-      ctx.font = "bold 11px sans-serif";
+      ctx.font = "900 12px sans-serif";
       for (const c of CABINETS) {
         const top = 168 + c.dy;
         ctx.fillStyle = c.marquee;
         ctx.fillRect(c.x + 6, top + 4, c.w - 12, 16);
         ctx.fillStyle = "#1a0d18";
+        ctx.lineWidth = 0.8;
+        ctx.strokeStyle = "#1a0d18";
         ctx.fillText(c.name, c.x + c.w / 2, top + 16);
+        ctx.strokeText(c.name, c.x + c.w / 2, top + 16);
       }
       ctx.restore();
 
@@ -1559,7 +1568,7 @@ export default function FightCanvas({
       ctx = bgCtx;
       drawBackground();
       ctx = mainCtx;
-      ctx.filter = "blur(1.1px)";
+      ctx.filter = "blur(1px)";
       ctx.drawImage(bgCanvas, 0, 0, CANVAS_W, GROUND_SCREEN_Y, 0, 0, CANVAS_W, GROUND_SCREEN_Y);
       ctx.filter = "none";
       ctx.drawImage(
@@ -1598,7 +1607,7 @@ export default function FightCanvas({
         const pose = lastPose[f.id];
         if (!pose) continue;
         const reflY = GROUND_SCREEN_Y * 2 - pose.y; // mirror around the ground line
-        drawSprite(pose.anim, pose.frame, pose.x, reflY, pose.facing, -0.8, 0.13, "blur(1px) brightness(0.6)");
+        drawSprite(pose.anim, pose.frame, pose.x, reflY, pose.facing, -0.82, 0.22, "blur(0.8px) brightness(0.75)");
       }
 
       // simple ground shadows

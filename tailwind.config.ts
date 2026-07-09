@@ -19,7 +19,7 @@ const config: Config = {
         },
       },
       fontFamily: {
-        arcade: ["'Press Start 2P'", "monospace"],
+        arcade: ["var(--font-arcade)", "'Press Start 2P'", "monospace"],
       },
       boxShadow: {
         neon: "0 0 6px rgba(255,92,115,0.55), 0 0 16px rgba(255,92,115,0.25)",
