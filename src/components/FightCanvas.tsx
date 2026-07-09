@@ -652,10 +652,13 @@ export default function FightCanvas({
       { x: 470, w: 132, screen: "#ffd27d", marquee: "#7dff8e", name: "퍼즐", demo: "puzzle", mode: "flicker" },
       { x: 624, w: 136, screen: "#9fa8ff", marquee: "#ff8a5c", name: "야구", demo: "base", mode: "demo" },
     ];
-    const POSTERS = [
-      { x: 58, y: 92, w: 34, h: 48, c: "#7a2f4a" },
-      { x: 224, y: 86, w: 30, h: 44, c: "#2f4a7a" },
-      { x: 668, y: 90, w: 32, h: 46, c: "#4a6a2f" },
+    // Game posters slapped on the wall, slightly crooked, some dog-eared —
+    // the wallpaper of every 1997 arcade.
+    const POSTERS: Array<{ x: number; y: number; w: number; h: number; c: string; title: string; tilt: number; torn: boolean }> = [
+      { x: 58, y: 92, w: 38, h: 52, c: "#7a2f4a", title: "KOF'97", tilt: -0.05, torn: false },
+      { x: 224, y: 86, w: 34, h: 48, c: "#5a5a2f", title: "METAL SLUG", tilt: 0.04, torn: true },
+      { x: 556, y: 88, w: 32, h: 46, c: "#2f4a7a", title: "FATAL FURY", tilt: 0.06, torn: false },
+      { x: 668, y: 92, w: 36, h: 50, c: "#4a2f6a", title: "사무라이", tilt: -0.04, torn: true },
     ];
     // Onlookers stand in knots, not a parade line. Clustered offsets overlap
     // so each knot reads as one mass of people. Ordered so a small crowd
@@ -846,13 +849,45 @@ export default function FightCanvas({
       }
 
       for (const p of POSTERS) {
+        ctx.save();
+        ctx.translate(p.x + p.w / 2, p.y + p.h / 2);
+        ctx.rotate(p.tilt);
+        ctx.fillStyle = "#e8ddca"; // aged paper border
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
         ctx.fillStyle = p.c;
-        ctx.fillRect(p.x, p.y, p.w, p.h);
-        ctx.fillStyle = "rgba(255,255,255,0.25)";
-        ctx.fillRect(p.x + 4, p.y + 5, p.w - 8, 10);
-        ctx.strokeStyle = "rgba(0,0,0,0.5)";
-        ctx.strokeRect(p.x, p.y, p.w, p.h);
+        ctx.fillRect(-p.w / 2 + 2, -p.h / 2 + 2, p.w - 4, p.h - 4);
+        // key art: a fighter silhouette mid-punch
+        ctx.fillStyle = "rgba(10,6,14,0.85)";
+        ctx.beginPath();
+        ctx.arc(-1, -3, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillRect(-5, 1, 9, 13);
+        ctx.fillRect(4, 2, 8, 3);
+        // title band
+        ctx.fillStyle = "#e8ddca";
+        ctx.font = "bold 6px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText(p.title, 0, -p.h / 2 + 9);
+        if (p.torn) {
+          // dog-eared corner peeling off the wall
+          ctx.fillStyle = "#2a1731";
+          ctx.beginPath();
+          ctx.moveTo(p.w / 2, p.h / 2);
+          ctx.lineTo(p.w / 2 - 9, p.h / 2);
+          ctx.lineTo(p.w / 2, p.h / 2 - 9);
+          ctx.closePath();
+          ctx.fill();
+          ctx.fillStyle = "rgba(232,221,202,0.6)";
+          ctx.beginPath();
+          ctx.moveTo(p.w / 2 - 9, p.h / 2);
+          ctx.lineTo(p.w / 2, p.h / 2 - 9);
+          ctx.lineTo(p.w / 2 - 3, p.h / 2 - 3);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.restore();
       }
+      ctx.textAlign = "left";
 
       // neon sign blinks like tired 90s tubing
       const neonOn = Math.floor(animTimer / 30) % 11 !== 7;
@@ -886,6 +921,17 @@ export default function FightCanvas({
         ctx.globalAlpha = 0.5;
         ctx.fillRect(c.x + 2, top + 30, 5, bottom - top - 60);
         ctx.globalAlpha = 1;
+        // years of grime: scuffed patches, a worn bright edge, one taped repair
+        ctx.fillStyle = "rgba(0,0,0,0.25)";
+        ctx.fillRect(c.x + 8 + ((ci * 13) % 30), bottom - 38, 24, 12);
+        ctx.fillRect(c.x + c.w - 44, bottom - 88, 18, 8);
+        ctx.fillStyle = "rgba(255,255,255,0.05)";
+        ctx.fillRect(c.x + 8, top + 60, 3, bottom - top - 100);
+        if (ci === 1) {
+          ctx.fillStyle = "rgba(210,200,170,0.5)";
+          ctx.fillRect(c.x + c.w - 34, top + 118, 22, 5);
+          ctx.fillRect(c.x + c.w - 27, top + 111, 5, 20);
+        }
         // marquee
         ctx.fillStyle = c.marquee;
         ctx.fillRect(c.x + 6, top + 4, c.w - 12, 16);
@@ -934,6 +980,81 @@ export default function FightCanvas({
           ctx.fillRect(c.x + c.w / 2 - 1.5, top + 160, 3, 3);
         }
       }
+
+      // --- people at the machines: this arcade is open for business ---
+      // back-view player working a stick, elbow jitters as they mash
+      const drawPlayer = (px: number, seed: number, elbowRight: boolean) => {
+        const feet = 332;
+        const mash = Math.sin(animTimer * 0.6 + seed) * 2.5;
+        const lean = Math.sin(animTimer * 0.045 + seed) * 2;
+        ctx.fillStyle = "#0b0610";
+        ctx.fillRect(px - 8, feet - 34, 6, 34);
+        ctx.fillRect(px + 2, feet - 34, 6, 34);
+        ctx.beginPath();
+        ctx.moveTo(px - 11 + lean, feet - 34);
+        ctx.lineTo(px - 9 + lean, feet - 70);
+        ctx.lineTo(px + 9 + lean, feet - 70);
+        ctx.lineTo(px + 11 + lean, feet - 34);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(px + lean, feet - 77, 7, 0, Math.PI * 2);
+        ctx.fill();
+        const ex = elbowRight ? px + 9 + lean : px - 17 + lean;
+        ctx.fillRect(ex, feet - 60 + mash, 8, 5);
+      };
+      drawPlayer(CABINETS[0].x + CABINETS[0].w / 2 - 4, 0, true);
+      drawPlayer(CABINETS[4].x + CABINETS[4].w / 2 + 4, 3.1, false);
+
+      // the next challenger, leaning on the fighter cab with a tapping foot
+      {
+        const tap = Math.floor(animTimer / 22) % 5 === 0 ? 2 : 0;
+        ctx.fillStyle = "#0c0711";
+        ctx.beginPath();
+        ctx.moveTo(146, 302);
+        ctx.lineTo(152, 262);
+        ctx.lineTo(160, 264);
+        ctx.lineTo(156, 303);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(153, 256, 6.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillRect(147, 302, 5, 30);
+        ctx.fillRect(155, 304, 5, 28 - tap);
+      }
+
+      // every so often someone walks up and feeds the dead racer a coin
+      {
+        const ct = animTimer % 1100;
+        if (ct < 300) {
+          const c2 = CABINETS[2];
+          const doorX = c2.x + c2.w / 2;
+          const bend = ct < 60 ? ct / 60 : ct > 240 ? (300 - ct) / 60 : 1;
+          const px = doorX + 30;
+          const feet = 332;
+          ctx.fillStyle = "#0b0610";
+          ctx.fillRect(px - 3, feet - 30, 5, 30);
+          ctx.fillRect(px + 3, feet - 30, 5, 30);
+          ctx.beginPath();
+          ctx.moveTo(px - 6, feet - 30);
+          ctx.lineTo(px - 6 - bend * 10, feet - 56 + bend * 8);
+          ctx.lineTo(px + 6 - bend * 10, feet - 58 + bend * 8);
+          ctx.lineTo(px + 8, feet - 30);
+          ctx.closePath();
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(px - bend * 14, feet - 62 + bend * 9, 6.5, 0, Math.PI * 2);
+          ctx.fill();
+          if (bend > 0.8) {
+            ctx.fillRect(doorX + 6, 306, px - doorX - 12, 4);
+            if (ct % 30 < 15) {
+              ctx.fillStyle = "#ffd54d";
+              ctx.fillRect(doorX + 2, 308, 3, 3);
+            }
+          }
+        }
+      }
       ctx.restore();
 
       // smoky arcade air: haze bands under the lamps + slow drifting motes
@@ -952,6 +1073,24 @@ export default function FightCanvas({
         const mx = ((i * 167 + animTimer * (0.15 + (i % 3) * 0.08)) % (CANVAS_W + 40)) - 20;
         const my = 56 + ((i * 97 + animTimer * 0.06 * (1 + (i % 4))) % 270);
         ctx.fillRect(mx, my, 2, 2);
+      }
+
+      // light zoning: dark pockets between the lamps, a lift underneath them
+      for (const dx of [268, 528]) {
+        const dark = ctx.createLinearGradient(dx - 60, 0, dx + 60, 0);
+        dark.addColorStop(0, "rgba(0,0,0,0)");
+        dark.addColorStop(0.5, "rgba(0,0,0,0.16)");
+        dark.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = dark;
+        ctx.fillRect(dx - 60, 44, 120, GROUND_SCREEN_Y - 44);
+      }
+      for (const lx of [156, 416, 666]) {
+        const lite = ctx.createLinearGradient(lx - 70, 0, lx + 70, 0);
+        lite.addColorStop(0, "rgba(255,240,215,0)");
+        lite.addColorStop(0.5, "rgba(255,240,215,0.045)");
+        lite.addColorStop(1, "rgba(255,240,215,0)");
+        ctx.fillStyle = lite;
+        ctx.fillRect(lx - 70, 44, 140, GROUND_SCREEN_Y - 44);
       }
       ctx.restore();
 
@@ -993,6 +1132,27 @@ export default function FightCanvas({
             ctx.fillRect(nx - 5 + step * 4, ny - 4, 4, 10);
             ctx.fillRect(nx + 1 - step * 4, ny - 4, 4, 10);
           }
+        }
+      }
+
+      // two regulars chatting in the back corner, half-watching the match
+      {
+        const nodA = Math.sin(animTimer * 0.06) * 1.5;
+        const nodB = Math.sin(animTimer * 0.06 + 2.5) * 1.5;
+        ctx.fillStyle = "#0d0710";
+        for (const [gx, nod, faceDir] of [
+          [704, nodA, 1],
+          [724, nodB, -1],
+        ] as Array<[number, number, number]>) {
+          ctx.beginPath();
+          ctx.moveTo(gx - 8, 330);
+          ctx.quadraticCurveTo(gx - 8, 306, gx, 303);
+          ctx.quadraticCurveTo(gx + 8, 306, gx + 8, 330);
+          ctx.closePath();
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(gx + faceDir * 2, 296 + nod, 6, 0, Math.PI * 2);
+          ctx.fill();
         }
       }
 
@@ -1103,6 +1263,34 @@ export default function FightCanvas({
         ctx.lineTo(CANVAS_W, ly);
         ctx.stroke();
       }
+
+      // floor life: a crushed can, a stray coin, a cup, a dropped flyer
+      ctx.fillStyle = "#b03040";
+      ctx.fillRect(84, GROUND_SCREEN_Y + 30, 9, 5);
+      ctx.fillStyle = "rgba(255,255,255,0.35)";
+      ctx.fillRect(85, GROUND_SCREEN_Y + 31, 3, 1);
+      const glint = Math.floor(animTimer / 40) % 6 === 0;
+      ctx.fillStyle = glint ? "#fff2b0" : "#c9a63a";
+      ctx.beginPath();
+      ctx.ellipse(300, GROUND_SCREEN_Y + 52, 3, 1.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#ddd6c8";
+      ctx.beginPath();
+      ctx.moveTo(636, GROUND_SCREEN_Y + 40);
+      ctx.lineTo(646, GROUND_SCREEN_Y + 38);
+      ctx.lineTo(647, GROUND_SCREEN_Y + 44);
+      ctx.lineTo(637, GROUND_SCREEN_Y + 45);
+      ctx.closePath();
+      ctx.fill();
+      ctx.save();
+      ctx.translate(150, GROUND_SCREEN_Y + 60);
+      ctx.rotate(-0.3);
+      ctx.fillStyle = "rgba(226,218,200,0.8)";
+      ctx.fillRect(-9, -6, 18, 12);
+      ctx.fillStyle = "rgba(120,40,60,0.6)";
+      ctx.fillRect(-6, -3, 12, 2);
+      ctx.fillRect(-6, 1, 8, 1.5);
+      ctx.restore();
 
       // floor edge under the rail
       ctx.strokeStyle = "rgba(255,200,150,0.3)";
