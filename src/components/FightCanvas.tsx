@@ -632,38 +632,190 @@ export default function FightCanvas({
     // 1997 arcade interior — a row of running cabinets along the back wall,
     // a loose knot of silhouetted onlookers behind a steel rail, and the
     // open floor where the money matches happen.
-    const CABINETS = [
-      { x: 8, w: 132, screen: "#59d8ff", marquee: "#ff5c8a", name: "격투 97" },
-      { x: 162, w: 132, screen: "#7dff8e", marquee: "#ffd54d", name: "슈팅" },
-      { x: 316, w: 132, screen: "#ff9de2", marquee: "#59d8ff", name: "레이싱" },
-      { x: 470, w: 132, screen: "#ffd27d", marquee: "#7dff8e", name: "퍼즐" },
-      { x: 624, w: 136, screen: "#9fa8ff", marquee: "#ff8a5c", name: "야구" },
+    // Each cabinet runs its own thing: an attract demo, a dim tired tube, a
+    // black screen begging for coins, one that flickers. A working arcade,
+    // not a showroom.
+    type CabinetMode = "demo" | "dim" | "off" | "flicker";
+    type CabinetDemo = "fight" | "shoot" | "race" | "puzzle" | "base";
+    const CABINETS: Array<{
+      x: number;
+      w: number;
+      screen: string;
+      marquee: string;
+      name: string;
+      demo: CabinetDemo;
+      mode: CabinetMode;
+    }> = [
+      { x: 8, w: 132, screen: "#59d8ff", marquee: "#ff5c8a", name: "격투 97", demo: "fight", mode: "demo" },
+      { x: 162, w: 132, screen: "#7dff8e", marquee: "#ffd54d", name: "슈팅", demo: "shoot", mode: "dim" },
+      { x: 316, w: 132, screen: "#ff9de2", marquee: "#59d8ff", name: "레이싱", demo: "race", mode: "off" },
+      { x: 470, w: 132, screen: "#ffd27d", marquee: "#7dff8e", name: "퍼즐", demo: "puzzle", mode: "flicker" },
+      { x: 624, w: 136, screen: "#9fa8ff", marquee: "#ff8a5c", name: "야구", demo: "base", mode: "demo" },
     ];
     const POSTERS = [
       { x: 58, y: 92, w: 34, h: 48, c: "#7a2f4a" },
       { x: 224, y: 86, w: 30, h: 44, c: "#2f4a7a" },
       { x: 668, y: 90, w: 32, h: 46, c: "#4a6a2f" },
     ];
-    // irregular standing spots, not a parade line; `back` row stands deeper
-    const CROWD_SPOTS = [
-      { x: 120, back: false },
-      { x: 208, back: true },
-      { x: 318, back: false },
-      { x: 262, back: true },
-      { x: 452, back: false },
-      { x: 560, back: true },
-      { x: 648, back: false },
-      { x: 96, back: true },
-      { x: 388, back: true },
-      { x: 508, back: false },
-      { x: 596, back: false },
-      { x: 170, back: false },
+    // Onlookers stand in knots, not a parade line. Clustered offsets overlap
+    // so each knot reads as one mass of people. Ordered so a small crowd
+    // still spreads across all three knots; reaction gives each person a
+    // different move on the big moments.
+    const CROWD_ORDER: Array<{ x: number; h: number; back: boolean; reaction: number }> = [
+      { x: 142, h: 1.02, back: false, reaction: 1 },
+      { x: 612, h: 1.0, back: false, reaction: 0 },
+      { x: 417, h: 1.05, back: false, reaction: 2 },
+      { x: 157, h: 0.96, back: false, reaction: 0 },
+      { x: 626, h: 0.88, back: true, reaction: 3 },
+      { x: 433, h: 0.9, back: false, reaction: 1 },
+      { x: 128, h: 0.9, back: true, reaction: 3 },
+      { x: 640, h: 0.98, back: false, reaction: 2 },
+      { x: 402, h: 0.95, back: true, reaction: 0 },
+      { x: 170, h: 0.85, back: true, reaction: 2 },
+      { x: 582, h: 0.86, back: true, reaction: 1 },
+      { x: 654, h: 0.9, back: true, reaction: 0 },
     ];
 
     /** Horizontal offset that makes a layer lag (factor < 1) or lead
      *  (factor > 1) the camera — cheap parallax depth. */
     function layerShift(factor: number): number {
       return (camX - CANVAS_W / 2) * (1 - factor);
+    }
+
+    /** Tiny attract-mode loops so the screens look like running games. */
+    function drawCabinetScreen(
+      c: (typeof CABINETS)[number],
+      ci: number,
+      sx: number,
+      sy: number,
+      sw: number,
+      sh: number
+    ) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(sx, sy, sw, sh);
+      ctx.clip();
+
+      // per-tube character: dim, flickering, or dead-waiting-for-coins
+      let alpha = 0.9;
+      if (c.mode === "dim") alpha = 0.42;
+      else if (c.mode === "flicker") alpha = (animTimer * 7 + ci * 31) % 90 < 5 ? 0.25 : 0.8;
+
+      if (c.mode === "off") {
+        ctx.fillStyle = "#05030a";
+        ctx.fillRect(sx, sy, sw, sh);
+        if (Math.floor(animTimer / 45) % 2 === 0) {
+          ctx.fillStyle = c.screen;
+          ctx.font = "bold 9px monospace";
+          ctx.textAlign = "center";
+          ctx.fillText("INSERT COIN", sx + sw / 2, sy + sh / 2 + 3);
+        }
+      } else {
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = "#0a0714";
+        ctx.fillRect(sx, sy, sw, sh);
+        const t = animTimer + ci * 120;
+        if (c.demo === "fight") {
+          // title → two fighters closing in → high score, on a loop
+          const phase = Math.floor(t / 300) % 3;
+          if (phase === 0) {
+            ctx.fillStyle = c.screen;
+            ctx.font = "bold 13px monospace";
+            ctx.textAlign = "center";
+            ctx.fillText("KOF'97", sx + sw / 2, sy + sh / 2 - 4);
+            if (Math.floor(t / 30) % 2 === 0) {
+              ctx.font = "7px monospace";
+              ctx.fillText("PUSH START", sx + sw / 2, sy + sh / 2 + 12);
+            }
+          } else if (phase === 1) {
+            const gy = sy + sh - 12;
+            ctx.fillStyle = "#1c1430";
+            ctx.fillRect(sx, gy, sw, 12);
+            const gap = 14 + Math.abs(Math.sin(t * 0.05)) * (sw - 44);
+            ctx.fillStyle = "#ff8a5c";
+            ctx.fillRect(sx + sw / 2 - gap / 2 - 5, gy - 16, 10, 16);
+            ctx.fillStyle = c.screen;
+            ctx.fillRect(sx + sw / 2 + gap / 2 - 5, gy - 16, 10, 16);
+            if (gap < 20) {
+              ctx.fillStyle = "#ffffff";
+              ctx.fillRect(sx + sw / 2 - 3, gy - 14, 6, 6);
+            }
+            ctx.fillStyle = "#7dff8e";
+            ctx.fillRect(sx + 4, sy + 5, sw * 0.35, 3);
+            ctx.fillRect(sx + sw - 4 - sw * 0.35, sy + 5, sw * 0.35, 3);
+          } else {
+            ctx.fillStyle = c.screen;
+            ctx.font = "8px monospace";
+            ctx.textAlign = "center";
+            ctx.fillText("HIGH SCORE", sx + sw / 2, sy + sh / 2 - 6);
+            ctx.fillText("00012300", sx + sw / 2, sy + sh / 2 + 8);
+          }
+        } else if (c.demo === "shoot") {
+          ctx.fillStyle = "#cfe8ff";
+          for (let i = 0; i < 9; i++) {
+            const star = (i * 37 + t * 1.4) % sh;
+            ctx.fillRect(sx + ((i * 53) % sw), sy + star, 2, 2);
+          }
+          const shipX = sx + sw / 2 + Math.sin(t * 0.03) * (sw * 0.3);
+          ctx.fillStyle = c.screen;
+          ctx.beginPath();
+          ctx.moveTo(shipX, sy + sh - 16);
+          ctx.lineTo(shipX - 6, sy + sh - 6);
+          ctx.lineTo(shipX + 6, sy + sh - 6);
+          ctx.closePath();
+          ctx.fill();
+        } else if (c.demo === "race") {
+          ctx.fillStyle = "#101624";
+          ctx.fillRect(sx, sy, sw, sh);
+          ctx.strokeStyle = "#3a4a66";
+          ctx.beginPath();
+          ctx.moveTo(sx + 8, sy + sh);
+          ctx.lineTo(sx + sw * 0.42, sy);
+          ctx.moveTo(sx + sw - 8, sy + sh);
+          ctx.lineTo(sx + sw * 0.58, sy);
+          ctx.stroke();
+          ctx.fillStyle = "#e8e0d0";
+          for (let i = 0; i < 4; i++) {
+            const dy = (t * 2 + i * 18) % sh;
+            const wFrac = dy / sh;
+            ctx.fillRect(sx + sw / 2 - 1 - wFrac, sy + dy, 2 + wFrac * 2, 5 + wFrac * 3);
+          }
+          ctx.fillStyle = c.screen;
+          ctx.fillRect(sx + sw / 2 - 7 + Math.sin(t * 0.02) * 8, sy + sh - 14, 14, 9);
+        } else if (c.demo === "puzzle") {
+          const cols = 5;
+          const rows = 4;
+          const bw = (sw - 12) / cols;
+          const bh = 8;
+          const palette = ["#ff5c8a", "#ffd54d", "#59d8ff", "#7dff8e"];
+          for (let r = 0; r < rows; r++) {
+            for (let q = 0; q < cols; q++) {
+              if ((q * 7 + r * 5) % 9 === 0) continue; // gaps in the stack
+              const blinkRow = Math.floor(t / 120) % rows === r && Math.floor(t / 15) % 2 === 0;
+              ctx.fillStyle = blinkRow ? "#ffffff" : palette[(q + r) % palette.length];
+              ctx.fillRect(sx + 6 + q * bw, sy + sh - 10 - r * (bh + 1), bw - 2, bh);
+            }
+          }
+        } else {
+          // baseball: green field, a pitched ball arcing out
+          ctx.fillStyle = "#14301c";
+          ctx.fillRect(sx, sy, sw, sh);
+          ctx.strokeStyle = "#2c5a38";
+          ctx.strokeRect(sx + 10, sy + 10, sw - 20, sh - 20);
+          const bt = (t % 90) / 90;
+          ctx.fillStyle = "#ffffff";
+          ctx.beginPath();
+          ctx.arc(sx + 12 + bt * (sw - 24), sy + sh - 12 - Math.sin(bt * Math.PI) * (sh - 22), 2.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      // rolling CRT band drifting down every screen
+      ctx.fillStyle = "rgba(255,255,255,0.06)";
+      ctx.fillRect(sx, sy + ((animTimer * 0.7 + ci * 40) % sh), sw, 5);
+      ctx.restore();
+      ctx.globalAlpha = 1;
     }
 
     function drawBackground() {
@@ -681,8 +833,12 @@ export default function FightCanvas({
 
       ctx.fillStyle = "#120a18";
       ctx.fillRect(-80, 0, CANVAS_W + 160, 44);
-      for (const tx of [150, 480]) {
+      for (const tx of [96, 356, 606]) {
         const flick = (animTimer + tx) % 240 > 6 ? 1 : 0.35; // tired fluorescent stutter
+        // hanging cords
+        ctx.fillStyle = "#0a0510";
+        ctx.fillRect(tx + 18, 12, 2, 22);
+        ctx.fillRect(tx + 100, 12, 2, 22);
         ctx.fillStyle = `rgba(220,235,255,${0.12 * flick})`;
         ctx.fillRect(tx - 18, 30, 156, 26);
         ctx.fillStyle = `rgba(235,245,255,${0.9 * flick})`;
@@ -725,6 +881,11 @@ export default function FightCanvas({
         ctx.fillRect(c.x, top, c.w, bottom - top);
         ctx.fillStyle = "rgba(0,0,0,0.35)";
         ctx.fillRect(c.x + c.w - 14, top, 14, bottom - top);
+        // side art sticker strip
+        ctx.fillStyle = c.marquee;
+        ctx.globalAlpha = 0.5;
+        ctx.fillRect(c.x + 2, top + 30, 5, bottom - top - 60);
+        ctx.globalAlpha = 1;
         // marquee
         ctx.fillStyle = c.marquee;
         ctx.fillRect(c.x + 6, top + 4, c.w - 12, 16);
@@ -732,66 +893,147 @@ export default function FightCanvas({
         ctx.font = "bold 11px sans-serif";
         ctx.textAlign = "center";
         ctx.fillText(c.name, c.x + c.w / 2, top + 16);
-        // screen: alive — slow pulse, occasional attract-mode flash
-        const pulse = 0.72 + Math.sin(animTimer * 0.03 + ci * 2.1) * 0.18;
-        const attract = (animTimer + ci * 97) % 300 < 8;
-        ctx.globalAlpha = attract ? 0.95 : pulse;
-        ctx.fillStyle = attract ? "#ffffff" : c.screen;
-        ctx.fillRect(c.x + 14, top + 28, c.w - 28, 56);
-        ctx.globalAlpha = 0.08;
-        ctx.fillStyle = c.screen; // spill onto the wall
-        ctx.fillRect(c.x - 6, top + 16, c.w + 12, 84);
-        ctx.globalAlpha = 1;
-        // control deck + buttons
+        // bezel + running screen
+        ctx.fillStyle = "#100818";
+        ctx.fillRect(c.x + 10, top + 24, c.w - 20, 64);
+        drawCabinetScreen(c, ci, c.x + 14, top + 28, c.w - 28, 56);
+        // maker badge on the bezel
+        ctx.fillStyle = "rgba(255,255,255,0.5)";
+        ctx.font = "bold 7px monospace";
+        ctx.textAlign = "left";
+        ctx.fillText("SNK", c.x + 14, top + 94);
+        // screen light spilling onto the wall (off screens spill nothing)
+        if (c.mode !== "off") {
+          ctx.globalAlpha = c.mode === "dim" ? 0.04 : 0.08;
+          ctx.fillStyle = c.screen;
+          ctx.fillRect(c.x - 6, top + 16, c.w + 12, 84);
+          ctx.globalAlpha = 1;
+        }
+        // control deck: joystick + buttons
         ctx.fillStyle = "#31182c";
-        ctx.fillRect(c.x + 4, top + 92, c.w - 8, 18);
+        ctx.fillRect(c.x + 4, top + 96, c.w - 8, 18);
+        ctx.fillStyle = "#0d0712";
+        ctx.fillRect(c.x + 26, top + 96, 3, 8); // stick
+        ctx.beginPath();
+        ctx.arc(c.x + 27.5, top + 94, 4, 0, Math.PI * 2); // ball top
+        ctx.fillStyle = "#c03a4a";
+        ctx.fill();
         ctx.fillStyle = "#ff5c5c";
-        ctx.fillRect(c.x + 24, top + 98, 5, 5);
+        ctx.fillRect(c.x + 48, top + 102, 6, 6);
         ctx.fillStyle = "#ffd54d";
-        ctx.fillRect(c.x + 36, top + 98, 5, 5);
+        ctx.fillRect(c.x + 60, top + 102, 6, 6);
+        // front panel: coin door with a blinking credit lamp
+        ctx.fillStyle = "#1d0f1c";
+        ctx.fillRect(c.x + c.w / 2 - 16, top + 132, 32, 42);
+        ctx.fillStyle = "#0a0510";
+        ctx.fillRect(c.x + c.w / 2 - 4, top + 140, 8, 12);
+        ctx.strokeStyle = "#8a6a40";
+        ctx.strokeRect(c.x + c.w / 2 - 4, top + 140, 8, 12);
+        if ((animTimer + ci * 50) % 160 < 80) {
+          ctx.fillStyle = "#ff5c5c";
+          ctx.fillRect(c.x + c.w / 2 - 1.5, top + 160, 3, 3);
+        }
       }
       ctx.restore();
 
-      // --- onlookers: a loose knot of pure-black silhouettes behind the rail.
-      // Head and shoulders only. They sway, raise arms on combos, lean back
-      // on supers and all jump on a KO. A win streak draws more of them in.
+      // smoky arcade air: haze bands under the lamps + slow drifting motes
+      ctx.save();
+      ctx.translate(layerShift(0.55), 0);
+      for (const hzy of [64, 148]) {
+        const hz = ctx.createLinearGradient(0, hzy, 0, hzy + 48);
+        hz.addColorStop(0, "rgba(255,240,220,0)");
+        hz.addColorStop(0.5, "rgba(255,240,220,0.05)");
+        hz.addColorStop(1, "rgba(255,240,220,0)");
+        ctx.fillStyle = hz;
+        ctx.fillRect(-60, hzy, CANVAS_W + 120, 48);
+      }
+      ctx.fillStyle = "rgba(255,245,230,0.07)";
+      for (let i = 0; i < 16; i++) {
+        const mx = ((i * 167 + animTimer * (0.15 + (i % 3) * 0.08)) % (CANVAS_W + 40)) - 20;
+        const my = 56 + ((i * 97 + animTimer * 0.06 * (1 + (i % 4))) % 270);
+        ctx.fillRect(mx, my, 2, 2);
+      }
+      ctx.restore();
+
+      // --- onlookers: knots of pure-black silhouettes behind the rail.
+      // Bodies overlap into a single mass per knot; heights vary. Each person
+      // has their own reaction: 0 = jumper, 1 = arms up, 2 = leaner,
+      // 3 = back-row peeker. On a KO everyone surges forward.
       const hype = crowdHype > 0 ? Math.min(1, crowdHype / 60) : 0;
-      const superLean = superInFlight() !== null;
-      const koJumping = koZoomFrames > 0;
-      const crowdCount = Math.min(CROWD_SPOTS.length, 5 + Math.floor(winStreak * 0.7));
+      const superLive = superInFlight() !== null;
+      const koSurge = koZoomFrames > 0;
+      const crowdCount = Math.min(CROWD_ORDER.length, 5 + Math.floor(winStreak * 0.7));
       ctx.save();
       ctx.translate(layerShift(0.7), 0);
-      for (let n = 0; n < crowdCount; n++) {
-        const spot = CROWD_SPOTS[n];
-        const scale = spot.back ? 0.82 : 1;
+
+      // passing NPC — a kid wanders in from the right, stops for a look, moves on
+      {
+        const nt = animTimer % 1800;
+        if (nt < 1140) {
+          let nx: number;
+          let walking = true;
+          if (nt < 300) nx = CANVAS_W + 30 - nt * 1.1;
+          else if (nt < 640) {
+            nx = CANVAS_W + 30 - 330;
+            walking = false; // stopped, watching the match
+          } else nx = CANVAS_W + 30 - 330 - (nt - 640) * 1.1;
+          const step = walking ? Math.sin(nt * 0.25) : 0;
+          const ny = 334 + (walking ? Math.abs(step) * 1.5 : Math.sin(nt * 0.05) * 1);
+          ctx.fillStyle = "#0f0912";
+          ctx.beginPath(); // small head
+          ctx.arc(nx, ny - 30, 6, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.beginPath(); // torso
+          ctx.moveTo(nx - 9, ny);
+          ctx.quadraticCurveTo(nx - 9, ny - 22, nx, ny - 25);
+          ctx.quadraticCurveTo(nx + 9, ny - 22, nx + 9, ny);
+          ctx.closePath();
+          ctx.fill();
+          if (walking) {
+            ctx.fillRect(nx - 5 + step * 4, ny - 4, 4, 10);
+            ctx.fillRect(nx + 1 - step * 4, ny - 4, 4, 10);
+          }
+        }
+      }
+
+      // draw back rows first so front bodies overlap them into one mass
+      const visible = CROWD_ORDER.slice(0, crowdCount);
+      for (const spot of [...visible.filter((s) => s.back), ...visible.filter((s) => !s.back)]) {
+        const n = CROWD_ORDER.indexOf(spot);
+        const scale = (spot.back ? 0.82 : 1) * spot.h;
         const feetY = spot.back ? 328 : 338;
-        const sway = Math.sin(animTimer * 0.045 + n * 2.3) * (1.5 + hype * 2);
-        const jump = koJumping
-          ? Math.abs(Math.sin(animTimer * 0.22 + n * 1.4)) * 9
-          : hype > 0.5 && n % 3 === 0
-            ? Math.abs(Math.sin(animTimer * 0.2 + n)) * 5 * hype
-            : 0;
-        const lean = superLean ? -4 : 0;
+        const sway = Math.sin(animTimer * 0.045 + n * 2.3) * (1.2 + hype * 2);
+        let jump = 0;
+        let lean = 0;
+        let rise = 0;
+        if (spot.reaction === 0 && (koSurge || hype > 0.5)) {
+          jump = Math.abs(Math.sin(animTimer * 0.22 + n * 1.4)) * (koSurge ? 9 : 5 * hype);
+        } else if (spot.reaction === 2 && superLive) {
+          lean = -5; // flinches back from the flash
+        } else if (spot.reaction === 3 && (superLive || hype > 0.4)) {
+          rise = 6; // back-row peeker cranes over the shoulders
+        }
+        if (koSurge) lean += spot.x < CANVAS_W / 2 ? 4 : -4; // everyone surges toward the action
         const cx = spot.x + sway;
-        const cy = feetY - jump;
+        const cy = feetY - jump - rise;
         ctx.fillStyle = spot.back ? "#0d0710" : "#070309";
         // shoulders
         ctx.beginPath();
-        ctx.moveTo(cx - 13 * scale, cy);
-        ctx.quadraticCurveTo(cx - 13 * scale, cy - 26 * scale, cx - 5 * scale, cy - 30 * scale);
+        ctx.moveTo(cx - 14 * scale, cy);
+        ctx.quadraticCurveTo(cx - 14 * scale, cy - 26 * scale, cx - 5 * scale, cy - 30 * scale);
         ctx.lineTo(cx + 5 * scale, cy - 30 * scale);
-        ctx.quadraticCurveTo(cx + 13 * scale, cy - 26 * scale, cx + 13 * scale, cy);
+        ctx.quadraticCurveTo(cx + 14 * scale, cy - 26 * scale, cx + 14 * scale, cy);
         ctx.closePath();
         ctx.fill();
         // head
         ctx.beginPath();
         ctx.arc(cx + lean, cy - 37 * scale, 7.5 * scale, 0, Math.PI * 2);
         ctx.fill();
-        // raised arms when the fight gets good
-        if (hype > 0.4 || koJumping) {
+        // arms up: the designated cheerers, or everyone when it erupts
+        if ((spot.reaction === 1 && hype > 0.3) || koSurge) {
           const wave = Math.sin(animTimer * 0.3 + n * 2) * 3;
-          ctx.fillRect(cx - 15 * scale, cy - 46 * scale + wave, 3.5, 16);
-          ctx.fillRect(cx + 11.5 * scale, cy - 46 * scale - wave, 3.5, 16);
+          ctx.fillRect(cx - 16 * scale, cy - 46 * scale + wave, 3.5, 16);
+          ctx.fillRect(cx + 12.5 * scale, cy - 46 * scale - wave, 3.5, 16);
         }
       }
 
