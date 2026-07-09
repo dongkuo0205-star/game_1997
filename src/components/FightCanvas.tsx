@@ -637,20 +637,23 @@ export default function FightCanvas({
     // not a showroom.
     type CabinetMode = "demo" | "dim" | "off" | "flicker";
     type CabinetDemo = "fight" | "shoot" | "race" | "puzzle" | "base";
+    // dy nudges each cabinet off the perfect line — nothing in a real arcade
+    // sits flush.
     const CABINETS: Array<{
       x: number;
       w: number;
+      dy: number;
       screen: string;
       marquee: string;
       name: string;
       demo: CabinetDemo;
       mode: CabinetMode;
     }> = [
-      { x: 8, w: 132, screen: "#59d8ff", marquee: "#ff5c8a", name: "격투 97", demo: "fight", mode: "demo" },
-      { x: 162, w: 132, screen: "#7dff8e", marquee: "#ffd54d", name: "슈팅", demo: "shoot", mode: "dim" },
-      { x: 316, w: 132, screen: "#ff9de2", marquee: "#59d8ff", name: "레이싱", demo: "race", mode: "off" },
-      { x: 470, w: 132, screen: "#ffd27d", marquee: "#7dff8e", name: "퍼즐", demo: "puzzle", mode: "flicker" },
-      { x: 624, w: 136, screen: "#9fa8ff", marquee: "#ff8a5c", name: "야구", demo: "base", mode: "demo" },
+      { x: 8, w: 132, dy: 0, screen: "#59d8ff", marquee: "#ff5c8a", name: "격투 97", demo: "fight", mode: "demo" },
+      { x: 160, w: 130, dy: 3, screen: "#7dff8e", marquee: "#ffd54d", name: "슈팅", demo: "shoot", mode: "dim" },
+      { x: 317, w: 132, dy: -2, screen: "#ff9de2", marquee: "#59d8ff", name: "레이싱", demo: "race", mode: "off" },
+      { x: 472, w: 128, dy: 2, screen: "#ffd27d", marquee: "#7dff8e", name: "퍼즐", demo: "puzzle", mode: "flicker" },
+      { x: 622, w: 138, dy: -1, screen: "#9fa8ff", marquee: "#ff8a5c", name: "야구", demo: "base", mode: "demo" },
     ];
     // Game posters slapped on the wall, slightly crooked, some dog-eared —
     // the wallpaper of every 1997 arcade.
@@ -667,16 +670,16 @@ export default function FightCanvas({
     const CROWD_ORDER: Array<{ x: number; h: number; back: boolean; reaction: number }> = [
       { x: 142, h: 1.02, back: false, reaction: 1 },
       { x: 612, h: 1.0, back: false, reaction: 0 },
-      { x: 417, h: 1.05, back: false, reaction: 2 },
-      { x: 157, h: 0.96, back: false, reaction: 0 },
-      { x: 626, h: 0.88, back: true, reaction: 3 },
-      { x: 433, h: 0.9, back: false, reaction: 1 },
-      { x: 128, h: 0.9, back: true, reaction: 3 },
-      { x: 640, h: 0.98, back: false, reaction: 2 },
-      { x: 402, h: 0.95, back: true, reaction: 0 },
-      { x: 170, h: 0.85, back: true, reaction: 2 },
-      { x: 582, h: 0.86, back: true, reaction: 1 },
-      { x: 654, h: 0.9, back: true, reaction: 0 },
+      { x: 420, h: 1.05, back: false, reaction: 2 },
+      { x: 152, h: 0.96, back: false, reaction: 0 },
+      { x: 621, h: 0.88, back: true, reaction: 3 },
+      { x: 431, h: 0.9, back: false, reaction: 1 },
+      { x: 133, h: 0.9, back: true, reaction: 3 },
+      { x: 632, h: 0.98, back: false, reaction: 2 },
+      { x: 410, h: 0.95, back: true, reaction: 0 },
+      { x: 163, h: 0.85, back: true, reaction: 2 },
+      { x: 594, h: 0.86, back: true, reaction: 1 },
+      { x: 645, h: 0.9, back: true, reaction: 0 },
     ];
 
     /** Horizontal offset that makes a layer lag (factor < 1) or lead
@@ -692,8 +695,10 @@ export default function FightCanvas({
       sx: number,
       sy: number,
       sw: number,
-      sh: number
+      sh: number,
+      modeOverride?: CabinetMode
     ) {
+      const mode = modeOverride ?? c.mode;
       ctx.save();
       ctx.beginPath();
       ctx.rect(sx, sy, sw, sh);
@@ -701,10 +706,10 @@ export default function FightCanvas({
 
       // per-tube character: dim, flickering, or dead-waiting-for-coins
       let alpha = 0.9;
-      if (c.mode === "dim") alpha = 0.42;
-      else if (c.mode === "flicker") alpha = (animTimer * 7 + ci * 31) % 90 < 5 ? 0.25 : 0.8;
+      if (mode === "dim") alpha = 0.42;
+      else if (mode === "flicker") alpha = (animTimer * 7 + ci * 31) % 90 < 5 ? 0.25 : 0.8;
 
-      if (c.mode === "off") {
+      if (mode === "off") {
         ctx.fillStyle = "#05030a";
         ctx.fillRect(sx, sy, sw, sh);
         if (Math.floor(animTimer / 45) % 2 === 0) {
@@ -908,10 +913,14 @@ export default function FightCanvas({
       // --- cabinet row (mid layer): the other machines keep running ---
       ctx.save();
       ctx.translate(layerShift(0.45), 0);
+      // the coin feeder actually gets to play: the dead racer springs to life
+      const feederT = animTimer % 1100;
+      const feederPlaying = feederT >= 300 && feederT < 900;
       for (let ci = 0; ci < CABINETS.length; ci++) {
         const c = CABINETS[ci];
-        const top = 168;
+        const top = 168 + c.dy;
         const bottom = 324;
+        const effMode: CabinetMode = ci === 2 && feederPlaying ? "demo" : c.mode;
         ctx.fillStyle = "#241222";
         ctx.fillRect(c.x, top, c.w, bottom - top);
         ctx.fillStyle = "rgba(0,0,0,0.35)";
@@ -942,17 +951,32 @@ export default function FightCanvas({
         // bezel + running screen
         ctx.fillStyle = "#100818";
         ctx.fillRect(c.x + 10, top + 24, c.w - 20, 64);
-        drawCabinetScreen(c, ci, c.x + 14, top + 28, c.w - 28, 56);
+        drawCabinetScreen(c, ci, c.x + 14, top + 28, c.w - 28, 56, effMode);
         // maker badge on the bezel
         ctx.fillStyle = "rgba(255,255,255,0.5)";
         ctx.font = "bold 7px monospace";
         ctx.textAlign = "left";
         ctx.fillText("SNK", c.x + 14, top + 94);
         // screen light spilling onto the wall (off screens spill nothing)
-        if (c.mode !== "off") {
-          ctx.globalAlpha = c.mode === "dim" ? 0.04 : 0.08;
+        if (effMode !== "off") {
+          ctx.globalAlpha = effMode === "dim" ? 0.04 : 0.08;
           ctx.fillStyle = c.screen;
           ctx.fillRect(c.x - 6, top + 16, c.w + 12, 84);
+          ctx.globalAlpha = 1;
+        }
+        // light pollution: the screen color washes onto the floor below
+        if (effMode !== "off") {
+          const flickDrop = effMode === "flicker" && (animTimer * 7 + ci * 31) % 90 < 5;
+          const glowA = flickDrop ? 0.02 : effMode === "dim" ? 0.03 : 0.07;
+          const gcx = c.x + c.w / 2;
+          const fg = ctx.createRadialGradient(gcx, GROUND_SCREEN_Y + 12, 8, gcx, GROUND_SCREEN_Y + 12, 90);
+          fg.addColorStop(0, c.screen);
+          fg.addColorStop(1, "rgba(0,0,0,0)");
+          ctx.globalAlpha = glowA;
+          ctx.fillStyle = fg;
+          ctx.beginPath();
+          ctx.ellipse(gcx, GROUND_SCREEN_Y + 14, 88, 26, 0, 0, Math.PI * 2);
+          ctx.fill();
           ctx.globalAlpha = 1;
         }
         // control deck: joystick + buttons
@@ -982,11 +1006,18 @@ export default function FightCanvas({
       }
 
       // --- people at the machines: this arcade is open for business ---
-      // back-view player working a stick, elbow jitters as they mash
+      // At 8+ wins the machines empty out — everyone has drifted over to
+      // watch the streak instead (they reappear in the crowd knots).
+      const houseWatching = winStreak >= 8;
+      const bigMoment = superInFlight() !== null || koZoomFrames > 0;
+
+      // back-view player working a stick; on a super/KO they stop mashing
+      // and crane their head around toward the noise; on a KO an arm goes up
       const drawPlayer = (px: number, seed: number, elbowRight: boolean) => {
         const feet = 332;
-        const mash = Math.sin(animTimer * 0.6 + seed) * 2.5;
+        const mash = bigMoment ? 0 : Math.sin(animTimer * 0.6 + seed) * 2.5;
         const lean = Math.sin(animTimer * 0.045 + seed) * 2;
+        const headTurn = bigMoment ? (px < CANVAS_W / 2 ? 5 : -5) : 0;
         ctx.fillStyle = "#0b0610";
         ctx.fillRect(px - 8, feet - 34, 6, 34);
         ctx.fillRect(px + 2, feet - 34, 6, 34);
@@ -998,16 +1029,21 @@ export default function FightCanvas({
         ctx.closePath();
         ctx.fill();
         ctx.beginPath();
-        ctx.arc(px + lean, feet - 77, 7, 0, Math.PI * 2);
+        ctx.arc(px + lean + headTurn, feet - 77, 7, 0, Math.PI * 2);
         ctx.fill();
-        const ex = elbowRight ? px + 9 + lean : px - 17 + lean;
-        ctx.fillRect(ex, feet - 60 + mash, 8, 5);
+        if (koZoomFrames > 0) {
+          ctx.fillRect(px + (elbowRight ? 10 : -14) + lean, feet - 92, 4, 20); // arm shoots up
+        } else {
+          const ex = elbowRight ? px + 9 + lean : px - 17 + lean;
+          ctx.fillRect(ex, feet - 60 + mash, 8, 5);
+        }
       };
-      drawPlayer(CABINETS[0].x + CABINETS[0].w / 2 - 4, 0, true);
-      drawPlayer(CABINETS[4].x + CABINETS[4].w / 2 + 4, 3.1, false);
 
-      // the next challenger, leaning on the fighter cab with a tapping foot
-      {
+      if (!houseWatching) {
+        drawPlayer(CABINETS[0].x + CABINETS[0].w / 2 - 4, 0, true);
+        drawPlayer(CABINETS[4].x + CABINETS[4].w / 2 + 4, 3.1, false);
+
+        // the next challenger, leaning on the fighter cab with a tapping foot
         const tap = Math.floor(animTimer / 22) % 5 === 0 ? 2 : 0;
         ctx.fillStyle = "#0c0711";
         ctx.beginPath();
@@ -1018,19 +1054,16 @@ export default function FightCanvas({
         ctx.closePath();
         ctx.fill();
         ctx.beginPath();
-        ctx.arc(153, 256, 6.5, 0, Math.PI * 2);
+        ctx.arc(153 + (bigMoment ? 4 : 0), 256, 6.5, 0, Math.PI * 2);
         ctx.fill();
         ctx.fillRect(147, 302, 5, 30);
         ctx.fillRect(155, 304, 5, 28 - tap);
-      }
 
-      // every so often someone walks up and feeds the dead racer a coin
-      {
-        const ct = animTimer % 1100;
-        if (ct < 300) {
+        // coin feeder: walks up, feeds the dead racer, then plays for a bit
+        if (feederT < 300) {
           const c2 = CABINETS[2];
           const doorX = c2.x + c2.w / 2;
-          const bend = ct < 60 ? ct / 60 : ct > 240 ? (300 - ct) / 60 : 1;
+          const bend = feederT < 60 ? feederT / 60 : feederT > 240 ? (300 - feederT) / 60 : 1;
           const px = doorX + 30;
           const feet = 332;
           ctx.fillStyle = "#0b0610";
@@ -1047,12 +1080,14 @@ export default function FightCanvas({
           ctx.arc(px - bend * 14, feet - 62 + bend * 9, 6.5, 0, Math.PI * 2);
           ctx.fill();
           if (bend > 0.8) {
-            ctx.fillRect(doorX + 6, 306, px - doorX - 12, 4);
-            if (ct % 30 < 15) {
+            ctx.fillRect(doorX + 6, 306 + c2.dy, px - doorX - 12, 4);
+            if (feederT % 30 < 15) {
               ctx.fillStyle = "#ffd54d";
-              ctx.fillRect(doorX + 2, 308, 3, 3);
+              ctx.fillRect(doorX + 2, 308 + c2.dy, 3, 3);
             }
           }
+        } else if (feederPlaying) {
+          drawPlayer(CABINETS[2].x + CABINETS[2].w / 2, 1.7, true);
         }
       }
       ctx.restore();
@@ -1101,7 +1136,8 @@ export default function FightCanvas({
       const hype = crowdHype > 0 ? Math.min(1, crowdHype / 60) : 0;
       const superLive = superInFlight() !== null;
       const koSurge = koZoomFrames > 0;
-      const crowdCount = Math.min(CROWD_ORDER.length, 5 + Math.floor(winStreak * 0.7));
+      // at 8+ wins the whole arcade abandons its machines to watch you
+      const crowdCount = winStreak >= 8 ? CROWD_ORDER.length : Math.min(CROWD_ORDER.length, 5 + Math.floor(winStreak * 0.7));
       ctx.save();
       ctx.translate(layerShift(0.7), 0);
 
@@ -1135,15 +1171,22 @@ export default function FightCanvas({
         }
       }
 
-      // two regulars chatting in the back corner, half-watching the match
+      // two regulars chatting in the back corner, half-watching the match —
+      // once the streak gets serious they stop chatting and face the fight
       {
+        const engrossed = winStreak >= 8;
         const nodA = Math.sin(animTimer * 0.06) * 1.5;
         const nodB = Math.sin(animTimer * 0.06 + 2.5) * 1.5;
         ctx.fillStyle = "#0d0710";
-        for (const [gx, nod, faceDir] of [
-          [704, nodA, 1],
-          [724, nodB, -1],
-        ] as Array<[number, number, number]>) {
+        for (const [gx, nod, faceDir] of (engrossed
+          ? [
+              [704, nodA, -1],
+              [724, nodB, -1],
+            ]
+          : [
+              [704, nodA, 1],
+              [724, nodB, -1],
+            ]) as Array<[number, number, number]>) {
           ctx.beginPath();
           ctx.moveTo(gx - 8, 330);
           ctx.quadraticCurveTo(gx - 8, 306, gx, 303);
@@ -1264,33 +1307,65 @@ export default function FightCanvas({
         ctx.stroke();
       }
 
-      // floor life: a crushed can, a stray coin, a cup, a dropped flyer
-      ctx.fillStyle = "#b03040";
-      ctx.fillRect(84, GROUND_SCREEN_Y + 30, 9, 5);
-      ctx.fillStyle = "rgba(255,255,255,0.35)";
-      ctx.fillRect(85, GROUND_SCREEN_Y + 31, 3, 1);
-      const glint = Math.floor(animTimer / 40) % 6 === 0;
-      ctx.fillStyle = glint ? "#fff2b0" : "#c9a63a";
-      ctx.beginPath();
-      ctx.ellipse(300, GROUND_SCREEN_Y + 52, 3, 1.5, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "#ddd6c8";
-      ctx.beginPath();
-      ctx.moveTo(636, GROUND_SCREEN_Y + 40);
-      ctx.lineTo(646, GROUND_SCREEN_Y + 38);
-      ctx.lineTo(647, GROUND_SCREEN_Y + 44);
-      ctx.lineTo(637, GROUND_SCREEN_Y + 45);
-      ctx.closePath();
-      ctx.fill();
-      ctx.save();
-      ctx.translate(150, GROUND_SCREEN_Y + 60);
-      ctx.rotate(-0.3);
-      ctx.fillStyle = "rgba(226,218,200,0.8)";
-      ctx.fillRect(-9, -6, 18, 12);
-      ctx.fillStyle = "rgba(120,40,60,0.6)";
-      ctx.fillRect(-6, -3, 12, 2);
-      ctx.fillRect(-6, 1, 8, 1.5);
-      ctx.restore();
+      // floor life: 5 pieces of litter, reshuffled every round — cans, coins,
+      // cigarette butts, game tokens, cups, flyers
+      for (let li = 0; li < 5; li++) {
+        const p1 = (((roundNumber * 7919 + li * 2971) % 997) + 997) % 997 / 997;
+        const p2 = (((roundNumber * 5741 + li * 4409) % 991) + 991) % 991 / 991;
+        const lx = 46 + p1 * (CANVAS_W - 92);
+        const ly = GROUND_SCREEN_Y + 22 + p2 * 44;
+        const kind = (li + roundNumber) % 6;
+        if (kind === 0) {
+          // crushed soda can
+          ctx.fillStyle = "#b03040";
+          ctx.fillRect(lx, ly, 9, 5);
+          ctx.fillStyle = "rgba(255,255,255,0.35)";
+          ctx.fillRect(lx + 1, ly + 1, 3, 1);
+        } else if (kind === 1) {
+          // 100-won coin catching the light now and then
+          ctx.fillStyle = Math.floor(animTimer / 40) % 6 === 0 ? "#fff2b0" : "#c9a63a";
+          ctx.beginPath();
+          ctx.ellipse(lx, ly, 3, 1.5, 0, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (kind === 2) {
+          // cigarette butt with a faint amber tip
+          ctx.fillStyle = "#d8d0c0";
+          ctx.fillRect(lx, ly, 5, 2);
+          ctx.fillStyle = "#c06a3a";
+          ctx.fillRect(lx + 5, ly, 1.5, 2);
+        } else if (kind === 3) {
+          // brass game token, duller than money
+          ctx.fillStyle = "#8a7a4a";
+          ctx.beginPath();
+          ctx.ellipse(lx, ly, 3, 1.5, 0, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (kind === 4) {
+          // paper cup on its side
+          ctx.fillStyle = "#ddd6c8";
+          ctx.beginPath();
+          ctx.moveTo(lx, ly);
+          ctx.lineTo(lx + 10, ly - 2);
+          ctx.lineTo(lx + 11, ly + 4);
+          ctx.lineTo(lx + 1, ly + 5);
+          ctx.closePath();
+          ctx.fill();
+        } else {
+          // dropped flyer
+          ctx.save();
+          ctx.translate(lx, ly);
+          ctx.rotate(-0.3 + p1 * 0.6);
+          ctx.fillStyle = "rgba(226,218,200,0.8)";
+          ctx.fillRect(-9, -6, 18, 12);
+          ctx.fillStyle = "rgba(120,40,60,0.6)";
+          ctx.fillRect(-6, -3, 12, 2);
+          ctx.fillRect(-6, 1, 8, 1.5);
+          ctx.restore();
+        }
+      }
+      // an empty green soda bottle by the rail, every round
+      ctx.fillStyle = "#3a6a4a";
+      ctx.fillRect(38, GROUND_SCREEN_Y + 14, 4, 9);
+      ctx.fillRect(39, GROUND_SCREEN_Y + 10, 2, 4);
 
       // floor edge under the rail
       ctx.strokeStyle = "rgba(255,200,150,0.3)";
