@@ -58,13 +58,15 @@ export default function HomePage() {
         <h1 className="neon-title font-arcade text-3xl text-arcade-neon sm:text-5xl">
           오락실 1997
         </h1>
-        <button
-          type="button"
-          onClick={handlePressStart}
-          className="blink-slow mt-5 cursor-pointer font-arcade text-[11px] text-arcade-yellow hover:text-arcade-neon"
-        >
-          ▶ PRESS START ◀
-        </button>
+        {!selecting && (
+          <button
+            type="button"
+            onClick={handlePressStart}
+            className="blink-slow mt-5 cursor-pointer font-arcade text-[11px] text-arcade-yellow hover:text-arcade-neon"
+          >
+            ▶ PRESS START ◀
+          </button>
+        )}
         <p className="mt-4 max-w-md text-sm leading-relaxed text-gray-300">
           1997년, 서울. 학교 앞 작은 오락실.
           <br />
