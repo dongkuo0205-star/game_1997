@@ -69,7 +69,16 @@ export default function FightCanvas({
     if (!canvas) return;
     const ctx2d = canvas.getContext("2d");
     if (!ctx2d) return;
-    const ctx: CanvasRenderingContext2D = ctx2d;
+    // `ctx` is swapped to the offscreen buffer while the background renders,
+    // then restored — lets the whole background get stamped back blurred
+    // (depth of field) and darkened in one pass.
+    let ctx: CanvasRenderingContext2D = ctx2d;
+    const bgCanvas = document.createElement("canvas");
+    bgCanvas.width = CANVAS_W;
+    bgCanvas.height = CANVAS_H;
+    const bgCtx2d = bgCanvas.getContext("2d");
+    if (!bgCtx2d) return;
+    const bgCtx: CanvasRenderingContext2D = bgCtx2d;
 
     let cancelled = false;
     let rafId = 0;
@@ -964,11 +973,24 @@ export default function FightCanvas({
           ctx.fillRect(c.x - 6, top + 16, c.w + 12, 84);
           ctx.globalAlpha = 1;
         }
-        // light pollution: the screen color washes onto the floor below
+        // light pollution: the screen color washes onto the floor below,
+        // with a visible CRT throw cone falling from the screen to the pool
         if (effMode !== "off") {
           const flickDrop = effMode === "flicker" && (animTimer * 7 + ci * 31) % 90 < 5;
           const glowA = flickDrop ? 0.02 : effMode === "dim" ? 0.03 : 0.07;
           const gcx = c.x + c.w / 2;
+          const cone = ctx.createLinearGradient(0, top + 86, 0, GROUND_SCREEN_Y + 16);
+          cone.addColorStop(0, c.screen);
+          cone.addColorStop(1, "rgba(0,0,0,0)");
+          ctx.globalAlpha = glowA * 0.8;
+          ctx.fillStyle = cone;
+          ctx.beginPath();
+          ctx.moveTo(c.x + 14, top + 86);
+          ctx.lineTo(c.x + c.w - 14, top + 86);
+          ctx.lineTo(gcx + 84, GROUND_SCREEN_Y + 16);
+          ctx.lineTo(gcx - 84, GROUND_SCREEN_Y + 16);
+          ctx.closePath();
+          ctx.fill();
           const fg = ctx.createRadialGradient(gcx, GROUND_SCREEN_Y + 12, 8, gcx, GROUND_SCREEN_Y + 12, 90);
           fg.addColorStop(0, c.screen);
           fg.addColorStop(1, "rgba(0,0,0,0)");
@@ -1411,6 +1433,7 @@ export default function FightCanvas({
     function drawForeground() {
       ctx.save();
       ctx.translate(layerShift(1.3), 0);
+      ctx.filter = "blur(2.5px)"; // closest layer sits deepest out of focus
       ctx.globalAlpha = 0.92;
       ctx.fillStyle = "#0b0510";
       ctx.beginPath();
@@ -1488,7 +1511,34 @@ export default function FightCanvas({
       ctx.scale(camZ, camZ);
       ctx.translate(-camX, -camY);
 
+      // depth of field: the background renders offscreen, then the wall half
+      // is stamped back softly blurred and washed 18% darker so the fighters
+      // pop; the floor they stand on stays sharp.
+      const mainCtx = ctx;
+      ctx = bgCtx;
       drawBackground();
+      ctx = mainCtx;
+      ctx.filter = "blur(1.5px)";
+      ctx.drawImage(bgCanvas, 0, 0, CANVAS_W, GROUND_SCREEN_Y, 0, 0, CANVAS_W, GROUND_SCREEN_Y);
+      ctx.filter = "none";
+      ctx.drawImage(
+        bgCanvas,
+        0,
+        GROUND_SCREEN_Y,
+        CANVAS_W,
+        CANVAS_H - GROUND_SCREEN_Y,
+        0,
+        GROUND_SCREEN_Y,
+        CANVAS_W,
+        CANVAS_H - GROUND_SCREEN_Y
+      );
+      ctx.fillStyle = "rgba(0,0,0,0.18)";
+      ctx.fillRect(0, 0, CANVAS_W, GROUND_SCREEN_Y);
+      const wash = ctx.createLinearGradient(0, GROUND_SCREEN_Y, 0, GROUND_SCREEN_Y + 30);
+      wash.addColorStop(0, "rgba(0,0,0,0.18)");
+      wash.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = wash;
+      ctx.fillRect(0, GROUND_SCREEN_Y, CANVAS_W, 30);
 
       // super cinematic: dim the street, spotlight whoever is unleashing it.
       // During the freeze frame (hit connects, world stops) it goes darkest —
@@ -1504,6 +1554,14 @@ export default function FightCanvas({
         spot.addColorStop(1, "rgba(255,236,170,0)");
         ctx.fillStyle = spot;
         ctx.fillRect(sx - 180, sy - 180, 360, 360);
+      }
+
+      // glossy floor: the fighters mirror faintly in the worn tile
+      for (const f of [world.opponent, world.player]) {
+        const pose = lastPose[f.id];
+        if (!pose) continue;
+        const reflY = GROUND_SCREEN_Y * 2 - pose.y; // mirror around the ground line
+        drawSprite(pose.anim, pose.frame, pose.x, reflY, pose.facing, -0.8, 0.13, "blur(1px) brightness(0.6)");
       }
 
       // simple ground shadows
