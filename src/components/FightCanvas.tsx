@@ -9,8 +9,8 @@ import { Fighter, FightInput, NEUTRAL_INPUT } from "@/lib/fight/types";
 import { ATTACKS } from "@/lib/fight/constants";
 import { MAX_HP, ROUNDS_TO_WIN, ROUND_TIME_SECONDS, STAGE_WIDTH } from "@/lib/fight/constants";
 import * as sfx from "@/lib/fight/sfx";
-import { startBgm, stopBgm } from "@/lib/fight/bgm";
-import { startAmbience, stopAmbience } from "@/lib/fight/ambience";
+import { duckBgm, startBgm, stopBgm } from "@/lib/fight/bgm";
+import { duckAmbience, startAmbience, stopAmbience } from "@/lib/fight/ambience";
 
 export interface FightMatchResult {
   won: boolean;
@@ -262,6 +262,11 @@ export default function FightCanvas({
         x: defender.x * SCALE,
         y: GROUND_SCREEN_Y - defender.y * SCALE - FIGURE_HEIGHT * 0.55,
       };
+    }
+
+    /** Stereo position for a sound landing at screen x. */
+    function panFor(x: number): number {
+      return Math.max(-0.45, Math.min(0.45, (x / CANVAS_W - 0.5) * 0.9));
     }
 
     // KOF-style contact flash: a rotating four-point star with a hot core,
@@ -1128,12 +1133,12 @@ export default function FightCanvas({
             koZoomFrames = Math.max(koZoomFrames, 24);
             crowdHype = Math.max(crowdHype, 90);
             crowdShout(true);
+            sfx.crowdCheer(2, 0.15);
           } else if (heavy) {
             screenFlash = 5;
             crowdHype = Math.max(crowdHype, 40);
           }
-          sfx.hit(heavy || isSuper);
-          if (isSuper) sfx.ko();
+          sfx.hit((ev.attackId ?? "lp") as sfx.HitKind, panFor(point.x));
           if (ev.attacker === "player") {
             if (ev.defenderWasAirborne) landedAntiAir = true;
             const combo = ev.comboCount ?? 0;
@@ -1141,6 +1146,10 @@ export default function FightCanvas({
             if (combo >= 2) {
               comboShown = combo;
               comboTimer = 55;
+              // the crowd swells as the combo grows
+              if (combo === 3) sfx.crowdCheer(1);
+              else if (combo === 5) sfx.crowdCheer(2);
+              else if (combo === 8) sfx.crowdCheer(3);
               if (combo >= 4) {
                 crowdHype = Math.max(crowdHype, 70);
                 crowdShout(false);
@@ -1152,11 +1161,15 @@ export default function FightCanvas({
           spawnImpactFlash(point.x, point.y, 22, "#8fdcff", false);
           hitstopFrames = 2;
           ghostDelay[ev.defender] = 30; // chip damage gets the same ghost treatment
-          sfx.block();
+          sfx.block(panFor(point.x));
         }
 
         if (ev.type === "ko") {
-          sfx.ko();
+          // KO sound ritual: blast → dead silence → the crowd erupts
+          sfx.koBlast(panFor(point.x));
+          duckBgm(0.4);
+          duckAmbience(0.4);
+          sfx.crowdCheer(3, 0.5);
           hitstopFrames = 18; // long freeze sells the finishing blow
           shakeFrames = 16;
           shakeMag = 9;
@@ -1176,7 +1189,7 @@ export default function FightCanvas({
           spawnSparks(lx, GROUND_SCREEN_Y - 6, ["#c9a68a", "#8a7362", "#e8d9c4"], big ? 14 : 8, big ? 4 : 2.5);
           shakeFrames = Math.max(shakeFrames, big ? 10 : 5);
           shakeMag = Math.max(shakeMag, big ? 6 : 3);
-          sfx.thud();
+          sfx.thud(Math.min(1, Math.abs(ev.impactVy ?? 5) / 11), panFor(lx));
         } else if (ev.type === "wallbounce") {
           const wf = ev.defender === "player" ? world.player : world.opponent;
           const wx = wf.x * SCALE;
@@ -1185,7 +1198,7 @@ export default function FightCanvas({
           spawnSparks(wx, wy, ["#cfd8ff", "#8fa0c0"], 8, 3);
           shakeFrames = Math.max(shakeFrames, 6);
           shakeMag = Math.max(shakeMag, 4);
-          sfx.block();
+          sfx.wallClang(panFor(wx));
         }
       }
 

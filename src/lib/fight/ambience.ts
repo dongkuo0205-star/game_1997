@@ -97,6 +97,18 @@ export function startAmbience(): void {
   }, 700);
 }
 
+/** Cut the room dead for `holdSeconds`, then fade back in (KO silence). */
+export function duckAmbience(holdSeconds = 0.35): void {
+  if (!audioCtx || !masterGain) return;
+  const t = audioCtx.currentTime;
+  const g = masterGain.gain;
+  g.cancelScheduledValues(t);
+  g.setValueAtTime(g.value, t);
+  g.linearRampToValueAtTime(0.0001, t + 0.03);
+  g.setValueAtTime(0.0001, t + 0.03 + holdSeconds);
+  g.linearRampToValueAtTime(MASTER_VOLUME, t + 0.03 + holdSeconds + 0.25);
+}
+
 export function stopAmbience(): void {
   if (blipTimer !== null) {
     clearInterval(blipTimer);

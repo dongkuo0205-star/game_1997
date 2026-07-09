@@ -107,6 +107,19 @@ export function startBgm(): void {
   }, 250);
 }
 
+/** Cut the music dead for `holdSeconds`, then fade back in. Used for the
+ *  beat of silence right after the KO blast. */
+export function duckBgm(holdSeconds = 0.35): void {
+  if (!audioCtx || !masterGain) return;
+  const t = audioCtx.currentTime;
+  const g = masterGain.gain;
+  g.cancelScheduledValues(t);
+  g.setValueAtTime(g.value, t);
+  g.linearRampToValueAtTime(0.0001, t + 0.03);
+  g.setValueAtTime(0.0001, t + 0.03 + holdSeconds);
+  g.linearRampToValueAtTime(VOLUME, t + 0.03 + holdSeconds + 0.25);
+}
+
 export function stopBgm(): void {
   if (schedulerId !== null) {
     clearInterval(schedulerId);
