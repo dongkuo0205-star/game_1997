@@ -121,6 +121,19 @@ export default function FightCanvas({
     let resultSounded = false;
     let matchEndTimer = 110; // let the WIN/LOSE banner breathe before leaving
 
+    // Dynamic camera: zooms in as the fighters close distance, with an extra
+    // punch-in on KO. HUD is drawn outside the camera transform.
+    let camX = CANVAS_W / 2;
+    let camZ = 1.02;
+    let koZoomFrames = 0;
+
+    // Full-screen white flash on heavy impacts, KOF-style.
+    let screenFlash = 0;
+    const SCREEN_FLASH_MAX = 12;
+
+    // HP bars keep a slowly-draining "ghost" so big damage reads as a chunk.
+    const ghostHp = { player: MAX_HP, opponent: MAX_HP };
+
     interface Particle {
       x: number;
       y: number;
@@ -166,6 +179,97 @@ export default function FightCanvas({
         x: defender.x * SCALE,
         y: GROUND_SCREEN_Y - defender.y * SCALE - FIGURE_HEIGHT * 0.55,
       };
+    }
+
+    // KOF-style contact flash: a rotating four-point star with a hot core,
+    // plus radial speed lines on heavy impacts.
+    interface ImpactFlash {
+      x: number;
+      y: number;
+      life: number;
+      maxLife: number;
+      size: number;
+      color: string;
+      lines: boolean;
+    }
+    let flashes: ImpactFlash[] = [];
+
+    function spawnImpactFlash(x: number, y: number, size: number, color: string, lines: boolean) {
+      flashes.push({ x, y, life: 0, maxLife: 9, size, color, lines });
+    }
+
+    function updateFlashes() {
+      flashes = flashes.filter((fl) => {
+        fl.life += 1;
+        return fl.life < fl.maxLife;
+      });
+    }
+
+    function drawFlashes() {
+      if (!flashes.length) return;
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      for (const fl of flashes) {
+        const t = fl.life / fl.maxLife;
+        const r = fl.size * (0.5 + t * 0.9);
+        ctx.globalAlpha = 1 - t;
+        const core = ctx.createRadialGradient(fl.x, fl.y, 0, fl.x, fl.y, r * 0.55);
+        core.addColorStop(0, "#ffffff");
+        core.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.fillStyle = core;
+        ctx.beginPath();
+        ctx.arc(fl.x, fl.y, r * 0.55, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = fl.color;
+        ctx.save();
+        ctx.translate(fl.x, fl.y);
+        ctx.rotate(0.4 + t * 0.7);
+        for (const rot of [0, Math.PI / 2]) {
+          ctx.save();
+          ctx.rotate(rot);
+          ctx.beginPath();
+          ctx.moveTo(-r, 0);
+          ctx.lineTo(0, -r * 0.18);
+          ctx.lineTo(r, 0);
+          ctx.lineTo(0, r * 0.18);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        }
+        ctx.restore();
+        if (fl.lines) {
+          ctx.strokeStyle = fl.color;
+          ctx.lineWidth = 2;
+          for (let i = 0; i < 8; i++) {
+            const a = (Math.PI * 2 * i) / 8 + 0.3;
+            ctx.beginPath();
+            ctx.moveTo(fl.x + Math.cos(a) * r * 0.8, fl.y + Math.sin(a) * r * 0.8);
+            ctx.lineTo(fl.x + Math.cos(a) * r * 1.6, fl.y + Math.sin(a) * r * 1.6);
+            ctx.stroke();
+          }
+        }
+      }
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    }
+
+    // Afterimage trail while a super is live — fading snapshots of recent poses.
+    interface TrailGhost {
+      x: number;
+      y: number;
+      facing: number;
+      anim: AnimName;
+      frame: number;
+      life: number;
+    }
+    let trails: TrailGhost[] = [];
+    const lastPose: Record<string, Omit<TrailGhost, "life"> | null> = { player: null, opponent: null };
+
+    function updateTrails() {
+      trails = trails.filter((tr) => {
+        tr.life += 1;
+        return tr.life < 12;
+      });
     }
 
     const trackers: Record<string, AnimTracker> = {
@@ -222,34 +326,25 @@ export default function FightCanvas({
       return parts.length ? parts.join(" ") : "none";
     }
 
-    function drawFighter(f: Fighter, isOpponent: boolean) {
+    function drawSprite(
+      anim: AnimName,
+      frame: number,
+      feetX: number,
+      feetY: number,
+      facing: number,
+      squashY: number,
+      alpha: number,
+      filter: string
+    ) {
       if (!sheets) return;
-      const { anim, frame, squashY } = resolveAnim(f);
       const img = sheets.images[anim];
       const { centerX, bottomY, height } = sheets.anchor;
       const s = FIGURE_HEIGHT / height;
-
-      const feetX = f.x * SCALE;
-      const feetY = GROUND_SCREEN_Y - f.y * SCALE;
-
-      // super aura behind the fighter while the super attack is live
-      if (f.action === "attack" && f.attackId === "super") {
-        const pulse = 0.75 + Math.sin(animTimer * 0.9) * 0.25;
-        const aura = ctx.createRadialGradient(feetX, feetY - FIGURE_HEIGHT * 0.5, 10, feetX, feetY - FIGURE_HEIGHT * 0.5, 110);
-        aura.addColorStop(0, `rgba(255,220,90,${0.5 * pulse})`);
-        aura.addColorStop(1, "rgba(255,220,90,0)");
-        ctx.fillStyle = aura;
-        ctx.fillRect(feetX - 120, feetY - FIGURE_HEIGHT - 40, 240, FIGURE_HEIGHT + 60);
-      }
-
       ctx.save();
+      ctx.globalAlpha = alpha;
       ctx.translate(feetX, feetY);
-      ctx.scale(f.facing, squashY);
+      ctx.scale(facing, squashY);
       ctx.imageSmoothingEnabled = false;
-      let filter = filterFor(f, isOpponent);
-      if (f.action === "attack" && f.attackId === "super") {
-        filter = filter === "none" ? "brightness(1.4) saturate(1.5)" : `${filter} brightness(1.4) saturate(1.5)`;
-      }
       ctx.filter = filter;
       ctx.drawImage(
         img,
@@ -265,12 +360,51 @@ export default function FightCanvas({
       ctx.restore();
     }
 
-    function drawHpBar(x: number, hp: number, alignRight: boolean) {
+    function drawTrails() {
+      for (const tr of trails) {
+        const fade = (1 - tr.life / 12) * 0.3;
+        drawSprite(tr.anim, tr.frame, tr.x, tr.y, tr.facing, 1, fade, "brightness(1.6) saturate(0.4)");
+      }
+    }
+
+    function drawFighter(f: Fighter, isOpponent: boolean) {
+      if (!sheets) return;
+      const { anim, frame, squashY } = resolveAnim(f);
+
+      const feetX = f.x * SCALE;
+      const feetY = GROUND_SCREEN_Y - f.y * SCALE;
+      lastPose[f.id] = { x: feetX, y: feetY, facing: f.facing, anim, frame };
+
+      // super aura behind the fighter while the super attack is live
+      if (f.action === "attack" && f.attackId === "super") {
+        const pulse = 0.75 + Math.sin(animTimer * 0.9) * 0.25;
+        const aura = ctx.createRadialGradient(feetX, feetY - FIGURE_HEIGHT * 0.5, 10, feetX, feetY - FIGURE_HEIGHT * 0.5, 110);
+        aura.addColorStop(0, `rgba(255,220,90,${0.5 * pulse})`);
+        aura.addColorStop(1, "rgba(255,220,90,0)");
+        ctx.fillStyle = aura;
+        ctx.fillRect(feetX - 120, feetY - FIGURE_HEIGHT - 40, 240, FIGURE_HEIGHT + 60);
+      }
+
+      let filter = filterFor(f, isOpponent);
+      if (f.action === "attack" && f.attackId === "super") {
+        filter = filter === "none" ? "brightness(1.4) saturate(1.5)" : `${filter} brightness(1.4) saturate(1.5)`;
+      }
+      drawSprite(anim, frame, feetX, feetY, f.facing, squashY, 1, filter);
+    }
+
+    function drawHpBar(x: number, hp: number, ghost: number, alignRight: boolean) {
       const w = 280;
       const h = 18;
       const pct = Math.max(0, Math.min(1, hp / MAX_HP));
+      const ghostPct = Math.max(pct, Math.min(1, ghost / MAX_HP));
       ctx.fillStyle = "rgba(0,0,0,0.75)";
       ctx.fillRect(x, 14, w, h);
+      // recently-lost chunk drains slowly so big damage reads at a glance
+      if (ghostPct > pct) {
+        ctx.fillStyle = animTimer % 8 < 4 ? "#ffe9d6" : "#ff8a5c";
+        if (alignRight) ctx.fillRect(x + w * (1 - ghostPct), 14, w * (ghostPct - pct), h);
+        else ctx.fillRect(x + w * pct, 14, w * (ghostPct - pct), h);
+      }
       const low = pct <= 0.35;
       const grad = ctx.createLinearGradient(0, 14, 0, 14 + h);
       if (low) {
@@ -333,8 +467,8 @@ export default function FightCanvas({
     }
 
     function drawHud() {
-      drawHpBar(16, world.player.hp, false);
-      drawHpBar(CANVAS_W - 16 - 280, world.opponent.hp, true);
+      drawHpBar(16, world.player.hp, ghostHp.player, false);
+      drawHpBar(CANVAS_W - 16 - 280, world.opponent.hp, ghostHp.opponent, true);
       drawMeterBar(16, world.player.meter, false);
       drawMeterBar(CANVAS_W - 16 - 180, world.opponent.meter, true);
       drawRoundPips(24, playerRounds, false);
@@ -386,7 +520,10 @@ export default function FightCanvas({
           ctx.fillText("FIGHT!", CANVAS_W / 2, CANVAS_H / 2 - 20);
         }
       } else if (phase === "roundEnd" || phase === "matchEnd") {
-        ctx.font = "bold 32px monospace";
+        // banner slams in oversized then settles
+        const timer = phase === "matchEnd" ? matchEndTimer : phaseTimer;
+        const punch = timer > 92 ? 1 + (timer - 92) * 0.14 : 1;
+        ctx.font = `bold ${Math.round(32 * punch)}px monospace`;
         ctx.fillStyle = "#ffe14d";
         ctx.strokeStyle = "#40200a";
         ctx.lineWidth = 5;
@@ -581,6 +718,17 @@ export default function FightCanvas({
       ctx.globalAlpha = 1;
     }
 
+    /** A fighter whose super is currently in startup/active frames, if any. */
+    function superInFlight(): Fighter | null {
+      const def = ATTACKS.super;
+      for (const f of [world.player, world.opponent]) {
+        if (f.action === "attack" && f.attackId === "super" && f.actionFrame <= def.startup + def.active + 4) {
+          return f;
+        }
+      }
+      return null;
+    }
+
     function draw() {
       ctx.save();
       if (shakeFrames > 0) {
@@ -590,7 +738,39 @@ export default function FightCanvas({
           (Math.random() * 2 - 1) * shakeMag * decay
         );
       }
+
+      // camera: ease toward the midpoint of the fighters, zooming with proximity
+      const pX = world.player.x * SCALE;
+      const oX = world.opponent.x * SCALE;
+      const proximity = Math.max(0, Math.min(1, 1 - Math.abs(pX - oX) / (CANVAS_W * 0.65)));
+      const koBoost = koZoomFrames > 0 ? (koZoomFrames / 45) * 0.2 : 0;
+      const targetZ = Math.min(1.35, 1.02 + proximity * 0.14 + koBoost);
+      camZ += (targetZ - camZ) * 0.08;
+      const halfW = CANVAS_W / (2 * camZ);
+      const targetX = Math.max(halfW, Math.min(CANVAS_W - halfW, (pX + oX) / 2));
+      camX += (targetX - camX) * 0.1;
+      camX = Math.max(halfW, Math.min(CANVAS_W - halfW, camX));
+      const camY = CANVAS_H - CANVAS_H / (2 * camZ); // hug the ground so the road stays in frame
+      ctx.translate(CANVAS_W / 2, CANVAS_H / 2);
+      ctx.scale(camZ, camZ);
+      ctx.translate(-camX, -camY);
+
       drawBackground();
+
+      // super cinematic: dim the street, spotlight whoever is unleashing it
+      const superFighter = superInFlight();
+      if (superFighter) {
+        ctx.fillStyle = "rgba(8,4,22,0.6)";
+        ctx.fillRect(-80, -80, CANVAS_W + 160, CANVAS_H + 160);
+        const sx = superFighter.x * SCALE;
+        const sy = GROUND_SCREEN_Y - superFighter.y * SCALE - FIGURE_HEIGHT * 0.5;
+        const spot = ctx.createRadialGradient(sx, sy, 20, sx, sy, 170);
+        spot.addColorStop(0, "rgba(255,236,170,0.4)");
+        spot.addColorStop(1, "rgba(255,236,170,0)");
+        ctx.fillStyle = spot;
+        ctx.fillRect(sx - 180, sy - 180, 360, 360);
+      }
+
       // simple ground shadows
       for (const f of [world.player, world.opponent]) {
         ctx.fillStyle = "rgba(0,0,0,0.35)";
@@ -598,10 +778,18 @@ export default function FightCanvas({
         ctx.ellipse(f.x * SCALE, GROUND_SCREEN_Y + 6, 34, 8, 0, 0, Math.PI * 2);
         ctx.fill();
       }
+      drawTrails();
       drawFighter(world.opponent, true);
       drawFighter(world.player, false);
+      drawFlashes();
       drawParticles();
       ctx.restore();
+
+      // full-screen impact flash, drawn in screen space under the HUD
+      if (screenFlash > 0) {
+        ctx.fillStyle = `rgba(255,255,255,${(screenFlash / SCREEN_FLASH_MAX) * 0.5})`;
+        ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+      }
       drawHud();
     }
 
@@ -612,6 +800,10 @@ export default function FightCanvas({
       }
       roundNumber += 1;
       world = createWorld();
+      ghostHp.player = MAX_HP;
+      ghostHp.opponent = MAX_HP;
+      trails = [];
+      flashes = [];
       timeLeftFrames = ROUND_TIME_SECONDS * 60;
       phase = "intro";
       phaseTimer = 90;
@@ -620,8 +812,15 @@ export default function FightCanvas({
     function tick() {
       animTimer += 1;
       updateParticles();
+      updateFlashes();
+      updateTrails();
       if (comboTimer > 0) comboTimer -= 1;
       if (shakeFrames > 0) shakeFrames -= 1;
+      if (screenFlash > 0) screenFlash -= 1;
+      if (koZoomFrames > 0) koZoomFrames -= 1;
+      // ghost HP drains toward the real value after a beat
+      ghostHp.player = Math.max(world.player.hp, ghostHp.player - 0.7);
+      ghostHp.opponent = Math.max(world.opponent.hp, ghostHp.opponent - 0.7);
 
       if (phase === "intro") {
         if (phaseTimer === 90) sfx.roundStart();
@@ -685,9 +884,18 @@ export default function FightCanvas({
             isSuper ? 26 : heavy ? 14 : 9,
             isSuper ? 7 : heavy ? 5 : 3.5
           );
+          spawnImpactFlash(
+            point.x,
+            point.y,
+            isSuper ? 64 : heavy ? 44 : 28,
+            isSuper ? "#ffd54d" : "#ffb060",
+            heavy || isSuper
+          );
           hitstopFrames = isSuper ? 12 : heavy ? 7 : 4;
           shakeFrames = isSuper ? 18 : heavy ? 10 : 5;
           shakeMag = isSuper ? 11 : heavy ? 7 : 4;
+          if (isSuper) screenFlash = 9;
+          else if (heavy) screenFlash = 5;
           sfx.hit(heavy || isSuper);
           if (isSuper) sfx.ko();
           if (ev.attacker === "player") {
@@ -701,14 +909,29 @@ export default function FightCanvas({
           }
         } else if (ev.type === "block") {
           spawnSparks(point.x, point.y, ["#7fd8ff", "#cfeeff"], 6, 2.5);
+          spawnImpactFlash(point.x, point.y, 22, "#8fdcff", false);
           hitstopFrames = 2;
           sfx.block();
         }
 
         if (ev.type === "ko") {
           sfx.ko();
+          hitstopFrames = 18; // long freeze sells the finishing blow
           shakeFrames = 16;
           shakeMag = 9;
+          screenFlash = SCREEN_FLASH_MAX;
+          koZoomFrames = 45;
+          spawnImpactFlash(point.x, point.y, 90, "#ffffff", true);
+        }
+      }
+
+      // afterimage snapshots while a super is live
+      if (animTimer % 2 === 0) {
+        for (const f of [world.player, world.opponent]) {
+          if (f.action === "attack" && f.attackId === "super") {
+            const pose = lastPose[f.id];
+            if (pose) trails.push({ ...pose, life: 0 });
+          }
         }
       }
 
