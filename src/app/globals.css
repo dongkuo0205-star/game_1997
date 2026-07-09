@@ -1,0 +1,65 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background-color: #16121f;
+  color: #ece7e0;
+}
+
+/* 90s CRT feel: horizontal scanlines + soft vignette. Pointer-events off so
+   overlays never block clicks. */
+.crt::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 0px,
+    rgba(0, 0, 0, 0) 2px,
+    rgba(0, 0, 0, 0.18) 3px
+  );
+  border-radius: inherit;
+}
+
+.crt::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 58%, rgba(0, 0, 0, 0.42) 100%);
+  border-radius: inherit;
+  z-index: 1;
+}
+
+.crt {
+  position: relative;
+}
+
+/* Neon shop-sign title: layered glow with the occasional electric flicker. */
+@keyframes neon-flicker {
+  0%, 100% { opacity: 1; }
+  91% { opacity: 1; }
+  92% { opacity: 0.55; }
+  93% { opacity: 1; }
+  96% { opacity: 0.8; }
+  97% { opacity: 1; }
+}
+
+.neon-title {
+  text-shadow:
+    0 0 6px rgba(255, 92, 115, 0.9),
+    0 0 20px rgba(255, 92, 115, 0.55),
+    0 0 48px rgba(255, 92, 115, 0.3);
+  animation: neon-flicker 4.5s infinite;
+}
+
+@keyframes blink-slow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+.blink-slow {
+  animation: blink-slow 1.4s step-end infinite;
+}
